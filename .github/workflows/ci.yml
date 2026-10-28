@@ -1,0 +1,28 @@
+name: Validate 2Space
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: docker build --target production --tag 2space:ci .
+      - name: Docker API acceptance
+        run: |
+          docker run -d --name 2space-ci -p 127.0.0.1:3210:3210 2space:ci
+          trap 'docker stop 2space-ci' EXIT
+          node scripts/acceptance.mjs

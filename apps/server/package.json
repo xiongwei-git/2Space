@@ -1,0 +1,17 @@
+{
+  "name": "@2space/server",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts"
+  },
+  "dependencies": {
+    "fastify": "^5.12.7",
+    "@fastify/static": "^10.1.8"
+  }
+}
