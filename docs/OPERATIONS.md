@@ -53,7 +53,7 @@ public默认永久（retentionSeconds=0，响应expiresAt=null）；非零有30�
 
 ## 短链接增量验收
 
-`node scripts/short-links-acceptance.mjs` 使用已编译的 `apps/server/dist`，自行建立临时SQLite并通过inject测试，不依赖/改动正在运行的3210。源码更新后先执行 `npm run build -w @2space/server`。此脚本和 `npm run test:visual` 都不能用现有生产数据库代替临时库。
+`npm run test:links`先构建前端和后端，再用临时SQLite通过inject验证旧链接及SPA入口，不依赖/改动正在运行的3210。直接运行`node scripts/short-links-acceptance.mjs`时，必须已有前后端完整dist；干净检出应使用npm命令，不能仅构建server。此脚本和 `npm run test:visual` 都不能用现有生产数据库代替临时库。
 
 本节对应旧private的compact增量：名称本身不授予旧private正文权限，完整可编辑/仅查看链接仍是能力凭证，禁止写入日志、截图和问题反馈。默认分享复用现有能力，显式更新/关闭才使旧读者失效。新public按上文凭名称读写，分享的是普通名称地址与仅查看页面地址，不应误用private权限承诺。任何模式都无法收回他人已复制内容。
 
