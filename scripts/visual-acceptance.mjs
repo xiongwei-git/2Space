@@ -402,6 +402,104 @@ async function api(
   assert.equal(response.status, status, "合成API状态符合契约");
   return status === 204 ? null : response.json();
 }
+function envelopeForDocument(document, rawKey = key) {
+  const iv = randomBytes(12),
+    cipher = createCipheriv("aes-256-gcm", rawKey, iv);
+  return {
+    iv: iv.toString("base64url"),
+    ciphertext: Buffer.concat([
+      cipher.update(JSON.stringify(document)),
+      cipher.final(),
+      cipher.getAuthTag(),
+    ]).toString("base64url"),
+  };
+}
+async function assertBrand(page, faviconText, expectedGeometry) {
+  const result = await page.evaluate(
+    ({ faviconText }) => {
+      const fingerprint = (svg) =>
+        JSON.stringify(
+          [...svg.querySelectorAll("g,rect")].map((node) => ({
+            tag: node.tagName.toLowerCase(),
+            attrs: [
+              "transform",
+              "stroke",
+              "stroke-width",
+              "data-brand-panel",
+              "x",
+              "y",
+              "width",
+              "height",
+              "rx",
+              "fill",
+            ]
+              .filter((name) => node.hasAttribute(name))
+              .map((name) => [name, node.getAttribute(name)]),
+          })),
+        );
+      const marks = [
+        ...document.querySelectorAll('svg[data-brand-mark="2space-dual"]'),
+      ];
+      const favicon = new DOMParser().parseFromString(
+        faviconText,
+        "image/svg+xml",
+      ).documentElement;
+      return {
+        count: marks.length,
+        signatures: marks.map(fingerprint),
+        favicon: fingerprint(favicon),
+        panels: marks.map(
+          (mark) => mark.querySelectorAll("rect[data-brand-panel]").length,
+        ),
+      };
+    },
+    { faviconText },
+  );
+  assert.ok(result.count >= 1, "页面显示原双格标识");
+  assert.ok(
+    result.panels.every((count) => count === 2),
+    "品牌标识为两块面板",
+  );
+  assert.ok(
+    result.signatures.every((signature) => signature === result.favicon),
+    "页面与favicon双格几何一致",
+  );
+  if (expectedGeometry)
+    assert.ok(
+      result.signatures.every((signature) => signature === expectedGeometry),
+      "首页与工作区使用同一标识",
+    );
+  assert.equal(
+    await page.locator('link[rel~="icon"]').getAttribute("href"),
+    "/favicon.svg",
+    "页面绑定双格favicon资源",
+  );
+  return result.favicon;
+}
+async function pasteRich(page, html, text) {
+  await page.evaluate(
+    async ({ html, text }) => {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([html], { type: "text/html" }),
+          "text/plain": new Blob([text], { type: "text/plain" }),
+        }),
+      ]);
+    },
+    { html, text },
+  );
+  await page.locator(".tiptap").focus();
+  await page.keyboard.press("ControlOrMeta+V");
+}
+function textOrder(value, tokens) {
+  let offset = -1;
+  for (const token of tokens) {
+    const next = value.indexOf(token, offset + 1);
+    if (next <= offset) return false;
+    offset = next;
+  }
+  return true;
+}
 async function saved(page) {
   await page
     .locator(".save-state")
@@ -448,6 +546,10 @@ try {
     status: 201,
   });
   const publicUrl = `${address}/${publicName}`;
+  const faviconResponse = await fetch(`${address}/favicon.svg`);
+  assert.equal(faviconResponse.status, 200, "本地favicon可读取");
+  const faviconText = await faviconResponse.text();
+  let brandGeometry;
   browser = await chromium.launch();
   for (const [label, width, height] of [
     ["desktop", 1280, 900],
@@ -463,6 +565,20 @@ try {
     const page = await context.newPage();
     await page.goto(address);
     await page.getByRole("button", { name: /进入剪贴板/ }).waitFor();
+    brandGeometry = await assertBrand(page, faviconText, brandGeometry);
+    assert.equal(
+      (await page.locator("h1[data-brand-slogan]").textContent()).replace(
+        /\s+/g,
+        "",
+      ),
+      "这边复制，那边就有。",
+      "首页恢复原slogan",
+    );
+    assert.equal(
+      await page.locator('svg[data-brand-mark="2space-dual"]').count(),
+      2,
+      "首页头尾品牌一致",
+    );
     for (const id of ["how", "features", "cases", "compare", "faq", "support"])
       assert.equal(
         await page.locator(`#${id}`).count(),
@@ -537,6 +653,7 @@ try {
     );
     await page.goto(publicUrl);
     await workspace(page);
+    await assertBrand(page, faviconText, brandGeometry);
     assert.equal(
       await page.locator(".tiptap").getAttribute("contenteditable"),
       "true",
@@ -565,17 +682,26 @@ try {
     );
     await audit(page, `${label}-reference-editor`, { editor: true });
     if (label === "desktop") {
-      assert.equal(
-        await page.locator(".editor-format").getAttribute("open"),
-        null,
-        "格式工具默认折叠",
-      );
-      await page.locator(".editor-format > summary").click();
       await page
+        .getByRole("toolbar", { name: "文字与代码", exact: true })
+        .waitFor();
+      assert.ok(
+        await page
+          .getByRole("button", { name: "代码块", exact: true })
+          .isVisible(),
+        "代码入口直接可见",
+      );
+      assert.equal(
+        await page.getByRole("button", { name: /表格/ }).count(),
+        0,
+        "编辑器没有表格入口",
+      );
+      await page
+        .locator(".code-block-view")
+        .first()
         .getByRole("combobox", { name: "代码语言", exact: true })
         .waitFor();
       await audit(page, "desktop-reference-format-tools", { editor: true });
-      await page.locator(".editor-format > summary").click();
       const beforeVisit = await api(address, `/spaces/${publicSpace.id}`);
       const visitResponse = page.waitForResponse(
         (response) =>
@@ -728,7 +854,9 @@ try {
   await darkPage.goto(publicUrl);
   await workspace(darkPage);
   await audit(darkPage, "desktop-reference-dark-editor", { editor: true });
-  await darkPage.locator(".editor-format > summary").click();
+  await darkPage
+    .getByRole("toolbar", { name: "文字与代码", exact: true })
+    .waitFor();
   await audit(darkPage, "desktop-reference-dark-format-tools", {
     editor: true,
   });
@@ -1295,6 +1423,493 @@ try {
   await unavailablePage.locator(".page-error,.error-banner").waitFor();
   await audit(unavailablePage, "mobile-reference-private-unavailable");
   await unavailableContext.close();
+  // Programmer-friendly editor: real keyboard, per-block clipboard, paste, and old-data display.
+  const firstCode = "const answer = 42;\n  console.log(answer);\n";
+  const secondCode = `print("${"second".repeat(40)}")\n`;
+  const escapeHtml = (value) =>
+    value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  for (const [label, width] of [
+    ["desktop", 1280],
+    ["mobile", 390],
+    ["narrow", 320],
+  ]) {
+    stage = `${label}-programmer-setup`;
+    const codeName = `code-${randomBytes(4).toString("hex")}`,
+      codeId = randomUUID();
+    const codeDocument = {
+      title: "逐块代码验收",
+      html: `<p>代码之前的说明。</p><pre><code class="language-javascript">${escapeHtml(firstCode)}</code></pre><pre><code class="language-python">${escapeHtml(secondCode)}</code></pre>`,
+      text: `代码之前的说明。\n${firstCode}\n${secondCode}`,
+      language: "javascript",
+    };
+    const codeSpace = await api(address, "/spaces", {
+      method: "POST",
+      body: {
+        accessMode: "public",
+        name: codeName,
+        publicKey: key.toString("base64url"),
+        ownerToken: randomBytes(32).toString("base64url"),
+        page: { id: codeId, payload: envelopeForDocument(codeDocument) },
+      },
+      status: 201,
+    });
+    const context = await browser.newContext({
+        viewport: { width, height: 900 },
+        reducedMotion: "reduce",
+        permissions: ["clipboard-read", "clipboard-write"],
+      }),
+      page = await context.newPage();
+    let codeLoadWrites = 0,
+      checkingLoad = true;
+    page.on("request", (request) => {
+      if (
+        checkingLoad &&
+        request.method() === "PUT" &&
+        new URL(request.url()).pathname ===
+          `/api/spaces/${codeSpace.id}/pages/${codeId}`
+      )
+        codeLoadWrites++;
+    });
+    await page.clock.install();
+    await page.goto(`${address}/${codeName}`);
+    await workspace(page);
+    await page.clock.runFor(1500);
+    assert.equal(codeLoadWrites, 0, "以代码结束的文档挂载/元数据刷新0次PUT");
+    const codeAfterLoad = await api(address, `/spaces/${codeSpace.id}`);
+    assert.equal(
+      codeAfterLoad.pages[0].revision,
+      codeSpace.pages[0].revision,
+      "只查看代码不改服务器版本",
+    );
+    assert.ok(
+      JSON.stringify(codeAfterLoad.pages[0].payload) ===
+        JSON.stringify(codeSpace.pages[0].payload),
+      "代码NodeView不自动补段落或保存",
+    );
+    checkingLoad = false;
+    const blocks = page.locator(".code-block-view"),
+      first = blocks.nth(0),
+      second = blocks.nth(1);
+    assert.equal(await blocks.count(), 2, "两段独立代码块");
+    await page
+      .getByRole("toolbar", { name: "文字与代码", exact: true })
+      .waitFor();
+    assert.ok(
+      await page
+        .getByRole("button", { name: "代码块", exact: true })
+        .isVisible(),
+      "代码入口无需先开菜单",
+    );
+    assert.equal(
+      await page.getByRole("button", { name: /表格/ }).count(),
+      0,
+      "无表格工具",
+    );
+    assert.equal(
+      await first
+        .getByRole("combobox", { name: "代码语言", exact: true })
+        .inputValue(),
+      "javascript",
+    );
+    assert.equal(
+      await second
+        .getByRole("combobox", { name: "代码语言", exact: true })
+        .inputValue(),
+      "python",
+    );
+    assert.ok(
+      (await first.locator(".hljs-keyword").count()) > 0,
+      "第一块语法高亮",
+    );
+    await first
+      .getByRole("combobox", { name: "代码语言", exact: true })
+      .selectOption("plaintext");
+    await page.waitForFunction(() => {
+      const block = document.querySelector(".code-block-view");
+      return (
+        block?.getAttribute("data-language") === "plaintext" &&
+        block.querySelectorAll('[class*="hljs-"]').length === 0
+      );
+    });
+    assert.equal(
+      await first.locator('[class*="hljs-"]').count(),
+      0,
+      "选择纯文本不自动猜高亮",
+    );
+    await first
+      .getByRole("combobox", { name: "代码语言", exact: true })
+      .selectOption("javascript");
+    await first.locator(".hljs-keyword").first().waitFor();
+    assert.ok(
+      (await first.locator(".hljs-keyword").count()) > 0,
+      "切回JS恢复语法高亮",
+    );
+    assert.deepEqual(
+      await first.locator(".code-line-numbers > span").allTextContents(),
+      ["1", "2", "3"],
+      "行号含末尾空行",
+    );
+    assert.ok(
+      await second
+        .locator("pre.code-block-scroll")
+        .evaluate((el) => el.scrollWidth > el.clientWidth),
+      "长代码仅块内横向滚动",
+    );
+    await first
+      .getByRole("combobox", { name: "代码语言", exact: true })
+      .selectOption("typescript");
+    assert.equal(
+      await second
+        .getByRole("combobox", { name: "代码语言", exact: true })
+        .inputValue(),
+      "python",
+      "语言只作用当前块",
+    );
+    for (const [block, expected] of [
+      [first, firstCode],
+      [second, secondCode],
+    ]) {
+      await block
+        .getByRole("button", { name: "复制代码", exact: true })
+        .click();
+      await page.waitForFunction(
+        async (expected) => (await navigator.clipboard.readText()) === expected,
+        expected,
+      );
+      assert.ok(
+        (await page.evaluate(() => navigator.clipboard.readText())) ===
+          expected,
+        "复制原始代码，不包含行号/语言/按钮",
+      );
+    }
+    const firstContent = first.locator("code[data-node-view-content]");
+    await firstContent.evaluate((element) => {
+      document.querySelector(".tiptap").focus();
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node && !node.textContent.length) node = walker.nextNode();
+      const range = document.createRange();
+      range.setStart(node, 0);
+      range.collapse(true);
+      const selection = getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+    await page.keyboard.press("Tab");
+    await page.waitForFunction(() =>
+      document
+        .querySelector(".code-block-view code[data-node-view-content]")
+        .textContent.startsWith("  const"),
+    );
+    assert.ok(
+      (await firstContent.textContent()) === `  ${firstCode}`,
+      "Tab插入两个空格",
+    );
+    await page.keyboard.press("Shift+Tab");
+    await page.waitForFunction(
+      (expected) =>
+        document.querySelector(".code-block-view code[data-node-view-content]")
+          .textContent === expected,
+      firstCode,
+    );
+    assert.ok(
+      (await firstContent.textContent()) === firstCode,
+      "ShiftTab恢复原代码",
+    );
+    await page.keyboard.press("Escape");
+    assert.ok(
+      await first
+        .getByRole("button", { name: "复制代码", exact: true })
+        .evaluate((el) => el === document.activeElement),
+      "Esc移出代码编辑到块操作",
+    );
+    await first
+      .getByRole("button", { name: "退出代码块", exact: true })
+      .click();
+    // Mock-clock load checks must also advance Tiptap's deferred focus frame.
+    await page.clock.runFor(32);
+    await page.waitForFunction(() => {
+      const node = getSelection()?.anchorNode,
+        element = node?.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+      return (
+        document.activeElement?.matches(".tiptap") &&
+        element instanceof Element &&
+        !!element.closest("p") &&
+        !!element.closest(".tiptap")
+      );
+    });
+    await page.keyboard.type("代码之外的说明");
+    assert.ok(
+      (await page.locator(".tiptap p").allTextContents()).some((value) =>
+        value.includes("代码之外的说明"),
+      ),
+      "退出后可写普通文字",
+    );
+    assert.ok(
+      !(await firstContent.textContent()).includes("代码之外的说明"),
+      "退出文字不污染代码",
+    );
+    await saved(page);
+    await audit(page, `${label}-programmer-code`, { editor: true });
+    const persisted = await api(address, `/spaces/${codeSpace.id}`);
+    const bytes = Buffer.from(
+        persisted.pages[0].payload.ciphertext,
+        "base64url",
+      ),
+      decipher = createDecipheriv(
+        "aes-256-gcm",
+        key,
+        Buffer.from(persisted.pages[0].payload.iv, "base64url"),
+      );
+    decipher.setAuthTag(bytes.subarray(-16));
+    const persistedDoc = JSON.parse(
+      Buffer.concat([
+        decipher.update(bytes.subarray(0, -16)),
+        decipher.final(),
+      ]).toString(),
+    );
+    assert.ok(
+      !/code-line-numbers|code-block-header|复制代码|退出代码块/.test(
+        persistedDoc.html,
+      ),
+      "渲染控件不进入持久化HTML",
+    );
+    let readOnlyWrites = 0;
+    page.on("request", (request) => {
+      if (
+        request.method() === "PUT" &&
+        new URL(request.url()).pathname ===
+          `/api/spaces/${codeSpace.id}/pages/${codeId}`
+      )
+        readOnlyWrites++;
+    });
+    await page.goto(`${address}/${codeName}?readonly`);
+    await workspace(page);
+    assert.equal(
+      await page
+        .getByRole("toolbar", { name: "文字与代码", exact: true })
+        .count(),
+      0,
+      "仅查看没有写工具",
+    );
+    const readerFirst = page.locator(".code-block-view").first(),
+      readerContent = readerFirst.locator("code[data-node-view-content]");
+    assert.ok(
+      await readerFirst
+        .getByRole("combobox", { name: "代码语言", exact: true })
+        .isDisabled(),
+      "仅查看语言不可改",
+    );
+    assert.equal(
+      await readerFirst
+        .getByRole("button", { name: "退出代码块", exact: true })
+        .count(),
+      0,
+      "仅查看无退出写入动作",
+    );
+    await readerFirst.locator("pre.code-block-scroll").focus();
+    await page.keyboard.type("只读不能插入");
+    await page.keyboard.press("Tab");
+    assert.ok(
+      (await readerContent.textContent()) === firstCode,
+      "只读键盘不改代码",
+    );
+    assert.ok(
+      !(await readerFirst
+        .locator("pre.code-block-scroll")
+        .evaluate((el) => el === document.activeElement)),
+      "只读Tab继续正常导航",
+    );
+    await readerFirst
+      .getByRole("button", { name: "复制代码", exact: true })
+      .click();
+    await page.waitForFunction(
+      async (expected) => (await navigator.clipboard.readText()) === expected,
+      firstCode,
+    );
+    assert.equal(readOnlyWrites, 0, "只读代码交互0次PUT");
+    assert.equal(
+      (await api(address, `/spaces/${codeSpace.id}`)).pages[0].revision,
+      persisted.pages[0].revision,
+      "只读不改变服务器版本",
+    );
+    await audit(page, `${label}-programmer-readonly`, { editor: true });
+    await context.close();
+  }
+  const tableTokens = ["姓名", "角色", "小一", "研发", "小二", "测试"];
+  const tableHtml =
+    "<table><thead><tr><th>姓名</th><th>角色</th></tr></thead><tbody><tr><td>小一</td><td>研发</td></tr><tr><td>小二</td><td>测试</td></tr></tbody></table>";
+  const tablePlain = "姓名\t角色\n小一\t研发\n小二\t测试";
+  for (const [label, width] of [
+    ["desktop", 1280],
+    ["mobile", 390],
+  ]) {
+    stage = `${label}-programmer-paste-setup`;
+    const name = `paste-${randomBytes(4).toString("hex")}`,
+      id = randomUUID();
+    const space = await api(address, "/spaces", {
+      method: "POST",
+      body: {
+        accessMode: "public",
+        name,
+        publicKey: key.toString("base64url"),
+        ownerToken: randomBytes(32).toString("base64url"),
+        page: {
+          id,
+          payload: envelopeForDocument({
+            title: "富文本粘贴验收",
+            html: "<p></p>",
+            text: "",
+            language: "plaintext",
+          }),
+        },
+      },
+      status: 201,
+    });
+    const context = await browser.newContext({
+        viewport: { width, height: 900 },
+        reducedMotion: "reduce",
+        permissions: ["clipboard-read", "clipboard-write"],
+      }),
+      page = await context.newPage();
+    await page.goto(`${address}/${name}`);
+    await workspace(page);
+    const rich =
+      '<h2>合成标题</h2><p><strong>加粗</strong> <em>斜体</em> <u>下划线</u> <s>删除线</s> <code>inline()</code> <a href="https://example.com">链接</a></p><ul><li>项目一</li><li>项目二</li></ul><blockquote><p>引用文字</p></blockquote>';
+    await pasteRich(
+      page,
+      rich,
+      "合成标题 加粗 斜体 下划线 删除线 inline() 链接 项目一 项目二 引用文字",
+    );
+    await page.locator(".tiptap h2").waitFor();
+    await saved(page);
+    for (const selector of [
+      "h2",
+      "strong",
+      "em",
+      "u",
+      "s",
+      "code",
+      "a",
+      "ul li",
+      "blockquote",
+    ])
+      assert.ok(
+        (await page.locator(`.tiptap ${selector}`).count()) > 0,
+        `粘贴保留${selector}语义`,
+      );
+    assert.equal(
+      await page.locator(".tiptap a").getAttribute("href"),
+      new URL("https://example.com").href,
+      "链接规范化后原地址保留",
+    );
+    await audit(page, `${label}-programmer-rich-paste`, { editor: true });
+    await page.locator(".tiptap").fill("");
+    await pasteRich(page, tableHtml, tablePlain);
+    await page.waitForFunction(() =>
+      document.querySelector(".tiptap").textContent.includes("小二"),
+    );
+    await saved(page);
+    assert.equal(
+      await page.locator(".tiptap table").count(),
+      0,
+      "表格粘贴不生成table",
+    );
+    assert.ok(
+      textOrder(await page.locator(".tiptap").innerText(), tableTokens),
+      "所有单元格文字按行序完整保留",
+    );
+    const stored = await api(address, `/spaces/${space.id}`),
+      bytes = Buffer.from(stored.pages[0].payload.ciphertext, "base64url"),
+      decipher = createDecipheriv(
+        "aes-256-gcm",
+        key,
+        Buffer.from(stored.pages[0].payload.iv, "base64url"),
+      );
+    decipher.setAuthTag(bytes.subarray(-16));
+    const doc = JSON.parse(
+      Buffer.concat([
+        decipher.update(bytes.subarray(0, -16)),
+        decipher.final(),
+      ]).toString(),
+    );
+    assert.ok(
+      !/<table(?:\s|>)/i.test(doc.html) && textOrder(doc.text, tableTokens),
+      "保存后仍为完整普通文字而非table",
+    );
+    await audit(page, `${label}-programmer-table-paste`, { editor: true });
+    await context.close();
+  }
+  stage = "programmer-legacy-table-setup";
+  const legacyTableId = randomUUID(),
+    legacyTableToken = randomBytes(32).toString("base64url");
+  const legacyTable = await api(address, "/spaces", {
+    method: "POST",
+    body: {
+      ownerToken: legacyTableToken,
+      page: {
+        id: legacyTableId,
+        payload: envelopeForDocument({
+          title: "旧表格资料",
+          html: `<p>旧资料前言</p>${tableHtml}<p>旧资料结尾</p>`,
+          text: `旧资料前言\n${tablePlain}\n旧资料结尾`,
+          language: "plaintext",
+        }),
+      },
+    },
+    status: 201,
+  });
+  const legacyContext2 = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      reducedMotion: "reduce",
+    }),
+    legacyTablePage = await legacyContext2.newPage();
+  let loadWrites = 0;
+  legacyTablePage.on("request", (request) => {
+    if (
+      request.method() === "PUT" &&
+      new URL(request.url()).pathname ===
+        `/api/spaces/${legacyTable.id}/pages/${legacyTableId}`
+    )
+      loadWrites++;
+  });
+  await legacyTablePage.clock.install();
+  await legacyTablePage.goto(
+    `${address}/s/${legacyTable.id}#k=${key.toString("base64url")}&m=${legacyTableToken}`,
+  );
+  await workspace(legacyTablePage);
+  await legacyTablePage.clock.runFor(1500);
+  assert.equal(
+    await legacyTablePage.locator(".tiptap table").count(),
+    0,
+    "旧表格显示为文字",
+  );
+  assert.ok(
+    textOrder(await legacyTablePage.locator(".tiptap").innerText(), [
+      "旧资料前言",
+      ...tableTokens,
+      "旧资料结尾",
+    ]),
+    "旧表格载入不丢任何文字",
+  );
+  assert.equal(loadWrites, 0, "仅载入旧表格0次PUT");
+  const legacyStored = await api(address, `/spaces/${legacyTable.id}`, {
+    token: legacyTableToken,
+  });
+  assert.equal(
+    legacyStored.pages[0].revision,
+    legacyTable.pages[0].revision,
+    "旧表格服务器版本保持",
+  );
+  assert.ok(
+    JSON.stringify(legacyStored.pages[0].payload) ===
+      JSON.stringify(legacyTable.pages[0].payload),
+    "旧表格原密文不被自动改写",
+  );
+  await audit(legacyTablePage, "mobile-programmer-legacy-table", {
+    editor: true,
+  });
+  await legacyContext2.close();
   await report("passed");
   console.log(
     `PASS: ${records.length}组参考对照阅读/功能/axe检查；截图已遮罩链接、二维码、密码和网络地址。`,

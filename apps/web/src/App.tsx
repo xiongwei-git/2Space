@@ -20,7 +20,7 @@ import {
   randomSecret,
 } from "./crypto.js";
 import { request, RequestError, subscribe } from "./api.js";
-import { sanitizeHtml } from "./sanitize.js";
+import { sanitizeHtml, normalizeDocument } from "./sanitize.js";
 import {
   accessCodeLink,
   compactLink,
@@ -73,7 +73,7 @@ function draftKey(space: string, page: string) {
   return `2space:draft:${space}:${page}`;
 }
 function cleanDocument(doc: PlainDocument) {
-  return { ...doc, html: sanitizeHtml(doc.html) };
+  return normalizeDocument(doc);
 }
 export default function App() {
   const [ready, setReady] = useState(false);

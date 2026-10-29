@@ -1,16 +1,13 @@
 import { useState } from "react";
 import Icon from "./Icon.js";
 import { randomExperienceName } from "./view-model.js";
-export function Brand() {
-  return (
-    <a className="logo" href="/" aria-label="2Space 首页">
-      <span className="logo-mark" aria-hidden="true">
-        <Icon name="clipboard" />
-      </span>
-      <span>2Space</span>
-    </a>
-  );
-}
+import {
+  Brand,
+  BRAND_SLOGAN,
+  BRAND_PROMISE,
+  BRAND_DESCRIPTION,
+} from "./Brand.js";
+export { Brand } from "./Brand.js";
 const features = [
   ["globe", "免注册即用", "无需账号、无需安装，打开浏览器输入名称即用。"],
   [
@@ -35,11 +32,11 @@ const cases = [
 ];
 const faqs = [
   [
-    "什么是2Space在线剪贴板？",
-    "2Space是一款在线剪贴板与便签工具。输入名称即可打开同名空间，在手机、电脑和平板之间传递文字、代码和常用富文本格式。",
+    "2Space适合做什么？",
+    "需要在设备间带走一段文字、一份代码或网页片段时，给它取个名称，再从另一端打开。常用格式和代码缩进也能保留。",
   ],
   [
-    "使用2Space需要注册或下载吗？",
+    "打开之前，需要准备什么？",
     "不需要。打开浏览器即可使用，无需安装客户端或插件。",
   ],
   [
@@ -47,7 +44,7 @@ const faqs = [
     "创建、编辑、密码保护、链接分享、二维码和文本下载均可直接使用。",
   ],
   [
-    "如何在手机和电脑之间传输文字？",
+    "怎么在两台设备之间接着用？",
     "在一台设备输入名称并粘贴内容，等待显示“已保存”，再在另一台设备打开相同链接即可查看和复制。",
   ],
   [
@@ -124,12 +121,9 @@ export default function Home({
         <section className="hero">
           <div className="home-container">
             <span className="hero-badge">✓ 免注册 · 无需下载客户端</span>
-            <h1>
-              免费在线剪贴板，<em>一个链接</em>实现跨设备复制粘贴
-            </h1>
-            <p className="hero-sub">
-              2Space是一款在线剪贴板与便签工具：输入名称即可获得专属链接，在手机、电脑、平板之间同步文字、代码与常用格式。
-            </p>
+            <h1 data-brand-slogan>{BRAND_SLOGAN}</h1>
+            <p className="hero-promise">{BRAND_PROMISE}</p>
+            <p className="hero-sub">{BRAND_DESCRIPTION}</p>
             <form
               className="form-card"
               onSubmit={(event) => {
@@ -213,8 +207,8 @@ export default function Home({
           <div className="home-container">
             <div className="section-head">
               <span className="kicker">快速上手</span>
-              <h2>三步上手，快速1秒搞定</h2>
-              <p>不需要注册，也不需要下载任何软件，记住你的链接就够了。</p>
+              <h2>给内容留个位置，只要三步</h2>
+              <p>取个名称，放下内容，换台设备接着用。</p>
             </div>
             <div className="steps">
               {[
@@ -259,8 +253,8 @@ export default function Home({
           <div className="home-container">
             <div className="section-head">
               <span className="kicker">核心功能</span>
-              <h2>为高频跨设备传输而设计</h2>
-              <p>每一个功能都围绕“更快地在设备之间搬运文字”这一件事。</p>
+              <h2>传过去，也保留好用的样子</h2>
+              <p>少一点操作，让文字、代码和常用格式顺手到达。</p>
             </div>
             <div className="features">
               {features.map(([icon, title, body]) => (
@@ -279,7 +273,7 @@ export default function Home({
           <div className="home-container">
             <div className="section-head">
               <span className="kicker">使用场景</span>
-              <h2>他们都用2Space传什么？</h2>
+              <h2>从这一端，到你需要的那一端</h2>
             </div>
             <div className="cases">
               {cases.map(([icon, title, body]) => (
@@ -299,10 +293,10 @@ export default function Home({
         <section className="home-section" id="compare">
           <div className="home-container">
             <div className="section-head">
-              <span className="kicker">为什么选择我们</span>
-              <h2>常见文本传输方式对比</h2>
+              <span className="kicker">找到顺手的方式</span>
+              <h2>不同工具，各有用处</h2>
               <p>
-                系统剪贴板用于本机，聊天软件用于沟通，云文档适合长文协作。2Space让临时传递更直接。
+                沟通可以用聊天，长文可以用文档。只想把一段内容带到另一端时，就留给2Space。
               </p>
             </div>
             <div
@@ -312,7 +306,7 @@ export default function Home({
               aria-label="功能对比表"
             >
               <table className="compare-table">
-                <caption>常见文本传输方式的使用特点</caption>
+                <caption>把内容带到另一端，你可以这样选</caption>
                 <thead>
                   <tr>
                     {[
@@ -360,7 +354,7 @@ export default function Home({
           <div className="home-container narrow">
             <div className="section-head">
               <span className="kicker">常见问题</span>
-              <h2>关于2Space在线剪贴板的常见疑问</h2>
+              <h2>使用之前，你可能想知道</h2>
             </div>
             <div className="faq-list">
               {faqs.map(([question, answer]) => (
@@ -378,8 +372,8 @@ export default function Home({
         <section className="home-section">
           <div className="home-container">
             <div className="cta">
-              <h2>现在，1秒创建你的第一个剪贴板</h2>
-              <p>打开就用——手机、电脑、平板之间搬文字。</p>
+              <h2>给下一次复制，留一个空间</h2>
+              <p>选个名称，把现在用得上的内容放进来。</p>
               <button
                 className="btn secondary"
                 onClick={() => onEnter(randomExperienceName())}
@@ -395,10 +389,8 @@ export default function Home({
               <span className="support-icon" aria-hidden="true">
                 <Icon name="heart" />
               </span>
-              <h2>喜欢2Space，就推荐给朋友</h2>
-              <p>
-                如果它帮你省下了来回传文字的时间，把这个小工具分享给身边需要的人。
-              </p>
+              <h2>把这份顺手，分享给朋友</h2>
+              <p>如果2Space让你少绕了一次路，也把它留给身边需要的人。</p>
               <button className="btn primary" onClick={onSupport}>
                 ♥ 支持2Space
               </button>
@@ -413,9 +405,7 @@ export default function Home({
         <div className="home-container footer-grid">
           <div>
             <Brand />
-            <p>
-              轻量的在线剪贴板与便签工具。输入名称，随时打开，跨设备传递文字。
-            </p>
+            <p>把常用的文字和代码留在这里，换台设备继续。</p>
             <span className="version">v1.0</span>
           </div>
           <nav aria-label="产品导航">
@@ -454,8 +444,10 @@ export default function Home({
           </div>
         </div>
         <div className="home-container footer-bottom">
-          <span>© {new Date().getFullYear()} 2Space · 在线剪贴板工具</span>
-          <span>用完及时清空，重要内容请备份。</span>
+          <span>
+            © {new Date().getFullYear()} 2Space · 这边复制，那边就有。
+          </span>
+          <span>随手放下，随时取用。重要内容请另行备份。</span>
         </div>
       </footer>
     </>

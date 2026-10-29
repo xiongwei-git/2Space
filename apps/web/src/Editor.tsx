@@ -1,28 +1,11 @@
 import { useEffect } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
-import { TableKit } from "@tiptap/extension-table";
-import { createLowlight } from "lowlight";
-import javascript from "highlight.js/lib/languages/javascript";
-import typescript from "highlight.js/lib/languages/typescript";
-import json from "highlight.js/lib/languages/json";
-import bash from "highlight.js/lib/languages/bash";
-import python from "highlight.js/lib/languages/python";
-import css from "highlight.js/lib/languages/css";
-import xml from "highlight.js/lib/languages/xml";
-import sql from "highlight.js/lib/languages/sql";
 import { sanitizeHtml } from "./sanitize.js";
-const lowlight = createLowlight({
-  javascript,
-  typescript,
-  json,
-  bash,
-  python,
-  css,
-  xml,
-  sql,
-});
+import {
+  canonicalLanguage,
+  createEditorExtensions,
+  setEditorReadOnly,
+} from "./code-editor.js";
 export interface EditorProps {
   html: string;
   readOnly: boolean;
@@ -36,30 +19,10 @@ export default function Editor({
   readOnly,
   language,
   onChange,
-  onLanguage,
   onNotice,
 }: EditorProps) {
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        codeBlock: false,
-        link: {
-          openOnClick: false,
-          autolink: false,
-          protocols: ["https", "http", "mailto"],
-        },
-      }),
-      CodeBlockLowlight.configure({
-        lowlight,
-        defaultLanguage: "plaintext",
-        HTMLAttributes: {
-          tabindex: "0",
-          role: "region",
-          "aria-label": "代码块",
-        },
-      }),
-      TableKit.configure({ table: { resizable: false } }),
-    ],
+    extensions: createEditorExtensions(onNotice),
     content: sanitizeHtml(html),
     editable: !readOnly,
     editorProps: {
@@ -71,6 +34,8 @@ export default function Editor({
       transformPastedHTML: (value) => {
         if (/<img\b|<svg\b/i.test(value))
           onNotice("图片不会粘贴，文字和常用格式已保留。");
+        if (/<table(?:\s|>)/i.test(value))
+          onNotice("表格已转为逐行文字，单元格内容已保留。");
         return sanitizeHtml(value);
       },
       handlePaste: (_view, event) => {
@@ -98,20 +63,18 @@ export default function Editor({
     shouldRerenderOnTransaction: true,
   });
   useEffect(() => {
-    if (editor && editor.getHTML() !== html) {
+    if (editor && editor.getHTML() !== html)
       editor.commands.setContent(sanitizeHtml(html), { emitUpdate: false });
-    }
   }, [editor, html]);
   useEffect(() => {
-    // Permission changes are presentation state, not a user edit or TTL renewal.
-    editor?.setEditable(!readOnly, false);
+    if (editor) setEditorReadOnly(editor, readOnly);
   }, [editor, readOnly]);
   if (!editor) return <div className="editor-loading">正在打开笔记…</div>;
   const tool = (
     label: string,
     title: string,
     active: boolean,
-    fn: () => void,
+    action: () => void,
   ) => (
     <button
       type="button"
@@ -119,7 +82,7 @@ export default function Editor({
       aria-label={title}
       aria-pressed={active}
       className={active ? "tool active" : "tool"}
-      onClick={fn}
+      onClick={action}
     >
       {label}
     </button>
@@ -127,96 +90,66 @@ export default function Editor({
   return (
     <div className="editor-shell">
       {!readOnly && (
-        <details className="editor-format">
-          <summary>文字格式</summary>
-          <div className="editor-tools" role="group" aria-label="文字格式">
-            {tool("B", "加粗", editor.isActive("bold"), () =>
-              editor.chain().focus().toggleBold().run(),
-            )}
-            {tool("I", "斜体", editor.isActive("italic"), () =>
-              editor.chain().focus().toggleItalic().run(),
-            )}
-            {tool("U", "下划线", editor.isActive("underline"), () =>
-              editor.chain().focus().toggleUnderline().run(),
-            )}
-            <span className="tool-divider" />
-            {tool("标题", "二级标题", editor.isActive("heading"), () =>
-              editor.chain().focus().toggleHeading({ level: 2 }).run(),
-            )}
-            {tool("列表", "无序列表", editor.isActive("bulletList"), () =>
-              editor.chain().focus().toggleBulletList().run(),
-            )}
-            {tool("引用", "引用", editor.isActive("blockquote"), () =>
-              editor.chain().focus().toggleBlockquote().run(),
-            )}
-            {tool("链接", "插入或修改链接", editor.isActive("link"), () => {
-              const url = window.prompt(
-                "粘贴完整网址",
-                editor.getAttributes("link").href || "https://",
-              );
-              if (url === null) return;
-              if (!url.trim()) {
-                editor.chain().focus().unsetLink().run();
-                return;
-              }
-              if (!/^(https?:\/\/|mailto:)/i.test(url)) {
-                onNotice("请输入完整网址，例如 https://example.com。");
-                return;
-              }
-              editor
-                .chain()
-                .focus()
-                .extendMarkRange("link")
-                .setLink({ href: url })
-                .run();
-            })}
-            {tool("代码", "代码块", editor.isActive("codeBlock"), () =>
-              editor.chain().focus().toggleCodeBlock({ language }).run(),
-            )}
-            {tool("表格", "插入简单表格", editor.isActive("table"), () => {
-              editor
-                .chain()
-                .focus()
-                .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-                .run();
-            })}
-            <select
-              aria-label="代码语言"
-              value={language}
-              onChange={(e) => {
-                onLanguage(e.target.value);
-                if (editor.isActive("codeBlock"))
-                  editor
-                    .chain()
-                    .focus()
-                    .updateAttributes("codeBlock", { language: e.target.value })
-                    .run();
-              }}
-            >
-              {[
-                "plaintext",
-                "javascript",
-                "typescript",
-                "json",
-                "bash",
-                "python",
-                "css",
-                "xml",
-                "sql",
-              ].map((l) => (
-                <option key={l} value={l}>
-                  {l === "plaintext" ? "不高亮" : l}
-                </option>
-              ))}
-            </select>
-          </div>
-        </details>
+        <div
+          className="editor-tools compact-tools"
+          role="toolbar"
+          aria-label="文字与代码"
+        >
+          {tool("加粗", "加粗", editor.isActive("bold"), () =>
+            editor.chain().focus().toggleBold().run(),
+          )}
+          {tool("行内代码", "行内代码", editor.isActive("code"), () =>
+            editor.chain().focus().toggleCode().run(),
+          )}
+          {tool("代码块", "代码块", editor.isActive("codeBlock"), () =>
+            editor
+              .chain()
+              .focus()
+              .toggleCodeBlock({ language: canonicalLanguage(language) })
+              .run(),
+          )}
+          <details className="editor-more-format">
+            <summary>更多格式</summary>
+            <div className="editor-tools">
+              {tool("斜体", "斜体", editor.isActive("italic"), () =>
+                editor.chain().focus().toggleItalic().run(),
+              )}
+              {tool("列表", "无序列表", editor.isActive("bulletList"), () =>
+                editor.chain().focus().toggleBulletList().run(),
+              )}
+              {tool("引用", "引用", editor.isActive("blockquote"), () =>
+                editor.chain().focus().toggleBlockquote().run(),
+              )}
+              {tool("链接", "插入或修改链接", editor.isActive("link"), () => {
+                const url = window.prompt(
+                  "粘贴完整网址",
+                  editor.getAttributes("link").href || "https://",
+                );
+                if (url === null) return;
+                if (!url.trim()) {
+                  editor.chain().focus().unsetLink().run();
+                  return;
+                }
+                if (!/^(https?:\/\/|mailto:)/i.test(url)) {
+                  onNotice("请输入完整网址，例如 https://example.com。");
+                  return;
+                }
+                editor
+                  .chain()
+                  .focus()
+                  .extendMarkRange("link")
+                  .setLink({ href: url })
+                  .run();
+              })}
+            </div>
+          </details>
+        </div>
       )}
       <div className="editor-content">
         <EditorContent editor={editor} />
         {!readOnly && editor.isEmpty && (
           <div className="editor-placeholder" aria-hidden="true">
-            在这里粘贴或输入文字，内容会自动保存。点击「＋ 新建」可添加记事本。
+            粘贴文字或代码。点击「代码块」可保留缩进并高亮显示。
           </div>
         )}
       </div>

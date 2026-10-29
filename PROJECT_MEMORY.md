@@ -80,3 +80,17 @@ ca948fe首次云端检查揭示test:links依赖本地已存在web/dist；干净�
 云端7370baf浏览器文字200%暴露Linux输入框固有宽度把二维码网格撑出右栏，已用minmax(0,1fr)+qr-box min-width:0修复，不隐藏溢出/降字号。另enter按冲突/dirty初始化保存状态，避免断网修改自动锁后解锁误报已保存；不自动补交。最终56组浏览器回归通过，新增宽字体200%+间距/逐层二维码几何边界、未保存解锁状态与手动保存恰1次PUT证明。root实际看新增截图，字阶与内容完整。
 
 最终Docker补丁更新后11空间/15页/2分享全部字段摘要一致（含1个合成演示空间），23项smoke通过，运行入口asset hash与56组验收dist一致。已保留更新前数据库备份，不清卷。云端以这一修复后的新提交检查为准。
+
+## 当前迭代：恢复品牌与轻量代码编辑
+
+用户基于23557c3明确授权并行实施：恢复原双格logo/原slogan，精简编辑器、突出代码、移除表格。当前分支feat/brand-code-editor。T10品牌拥有Home/Brand/favicon/index；T11编辑器拥有Editor/sanitize/code模块及测试；T12验收拥有scripts与验收/维护文档；root统一Workspace/App/style/依赖锁/其余文档和Docker集成。规则见ADR-004，不改变public/private/API，不清卷。
+
+原品牌来源f8962f5：双格错位图形、主蓝#3159DB、slogan“这边复制，那边就有。”。不恢复旧版不准确的默认私密/默认1天文案。表格转换不得在载入时写回数据库；兼容验证尚待完成，3210尚未更新。
+
+### 品牌/编辑器本地交付结果
+
+T10/T11/T12已交付并停写。统一BrandMark恢复f8962f5双格几何，Home/Workspace/favicon一致；原slogan和原hero短句已恢复，保留便捷访问/分享。Editor默认3操作，代码块含语言/行号/原文复制/缩进与退出。表格扩展已从依赖锁移除；normalizeDocument仅显示转换旧table，不初始化保存。关闭StarterKit.trailingNode，防metadata/selection事务偷偷补段落；plaintext已显式注册，未知语言不自动猜高亮。
+
+50项单元/集成(25server+25web)、67组浏览器阅读/功能、静态字阶与文案通过。root实际查看desktop Home/Editor、320px代码与390px旧表格，代码/行号齐整、原表格所有单元格文字可读；完整axe零自动违规不是全站合规。编辑器gzip154.45KB，较171.4KB下降约10%。
+
+已备份output/backups/before-brand-code-final-1793253907及同名旧镜像标签，然后更新本地3210。15空间/19页/2短分享所有记录摘要一致，SQLite integrity ok；运行入口asset hash与67组构建一致，24项含Docker重启smoke通过。未清卷、未部署公网，原生缩放/实体手机/屏幕阅读器/独立安全审计仍未验收。后续GitHub检查以新提交实际结果为准。

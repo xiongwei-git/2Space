@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import Icon from "./Icon.js";
+import { BrandMark, BRAND_SLOGAN } from "./Brand.js";
 import type { SpaceView } from "@2space/shared";
 import { MAX_PAGES, RETENTION_SECONDS } from "@2space/shared";
 import {
@@ -158,7 +159,7 @@ export default function Workspace(p: Props) {
       <header className="board-header">
         <div className="board-brand">
           <a className="board-logo" href="/" aria-label="2Space首页">
-            <Icon name="clipboard" />
+            <BrandMark />
           </a>
           <strong className="board-name">
             2space.cn/{p.space?.name || "剪贴板"}
@@ -421,8 +422,10 @@ export default function Workspace(p: Props) {
         </section>
       </aside>
       <footer className="board-footer">
-        2Space <span className="version">v1.0</span> 文字传送更简单 ·{" "}
-        <a href="/">免费在线剪贴板工具</a> · 觉得好用，分享给朋友试试
+        <a href="/">2Space</a> <span className="version">v1.0</span>{" "}
+        <span className="footer-slogan" data-brand-slogan>
+          {BRAND_SLOGAN}
+        </span>
       </footer>
     </main>
   );

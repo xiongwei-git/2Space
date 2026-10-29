@@ -5,11 +5,11 @@
   color: var(--color-text-primary);
   background: var(--bg);
   font-synthesis: none;
-  --brand: #2563eb;
-  --brand-700: #1d4ed8;
-  --brand-050: #eff6ff;
-  --brand-100: #dbeafe;
-  --bg: #f8fafc;
+  --brand: #3159db;
+  --brand-700: #2748b4;
+  --brand-050: #edf2ff;
+  --brand-100: #d8e3ff;
+  --bg: #f3f6fa;
   --card: #fff;
   --text: var(--color-text-primary);
   --muted: var(--color-text-secondary);
@@ -1006,7 +1006,7 @@ pre:focus-visible,
   min-height: 340px;
   outline: none;
   padding: 14px 12px;
-  font-family: var(--font-family-code);
+  font-family: var(--font-family-body);
   font-size: var(--font-size-body);
   line-height: var(--line-height-body);
   color: var(--text);
@@ -1077,26 +1077,6 @@ pre:focus-visible,
 }
 .tiptap .hljs-comment {
   color: var(--muted);
-}
-.tiptap table {
-  border-collapse: collapse;
-  width: 100%;
-  table-layout: fixed;
-  margin: 18px 0;
-}
-.tiptap td,
-.tiptap th {
-  border: 1px solid #8695ad;
-  min-width: 40px;
-  padding: 7px 10px;
-  vertical-align: top;
-}
-.tiptap th {
-  background: var(--brand-050);
-  font-weight: var(--font-weight-strong);
-}
-.tiptap .selectedCell {
-  background: var(--brand-100);
 }
 .editor-loading {
   padding: 35px;
@@ -1638,4 +1618,178 @@ button.tab-title {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+/* 2Space original dual-space identity; no clipboard badge behind the mark. */
+.brand-symbol {
+  display: block;
+  width: 39px;
+  height: 33px;
+  overflow: visible;
+  flex: none;
+}
+.logo {
+  gap: 12px;
+  font-size: var(--font-size-title);
+  letter-spacing: -0.05em;
+}
+.logo-mark {
+  width: auto;
+  height: auto;
+  background: none;
+  border-radius: 0;
+}
+.board-logo {
+  width: 39px;
+  height: 33px;
+  background: transparent;
+  border-radius: 0;
+}
+.hero-promise {
+  font-size: var(--font-size-lead);
+  line-height: var(--line-height-body);
+  font-weight: var(--font-weight-strong);
+  color: var(--text);
+  margin: 16px auto 0;
+}
+.board-footer .footer-slogan {
+  font-size: var(--font-size-secondary);
+}
+
+/* Small text tools remain secondary; each code block carries its own controls. */
+.compact-tools {
+  padding: 8px 10px;
+  gap: 6px;
+  background: var(--card);
+}
+.editor-more-format {
+  padding: 0 10px 8px;
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+}
+.editor-more-format summary {
+  color: var(--muted);
+  font-size: var(--font-size-secondary);
+  line-height: var(--line-height-body);
+  cursor: pointer;
+}
+.editor-more-format .editor-tools {
+  border: 0;
+  padding-bottom: 0;
+}
+.code-block-view {
+  margin: 1em 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--card);
+  min-width: 0;
+  overflow: hidden;
+}
+.code-block-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-secondary);
+  line-height: var(--line-height-control);
+}
+.code-block-header select,
+.code-block-header button {
+  border: 1px solid #8695ad;
+  border-radius: 5px;
+  background: var(--card);
+  color: var(--text);
+  min-height: 32px;
+  padding: 4px 8px;
+  font-size: var(--font-size-secondary);
+  line-height: var(--line-height-control);
+}
+.code-block-header select {
+  flex: 1 1 8rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.code-block-header button {
+  flex: 0 0 auto;
+}
+.code-block-header select:disabled {
+  opacity: 1;
+  color: var(--muted);
+}
+.code-block-body {
+  display: flex;
+  min-width: 0;
+}
+.code-line-numbers {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-width: 3ch;
+  padding: 12px 8px;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font-family-code);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  text-align: right;
+  user-select: none;
+  pointer-events: none;
+}
+.code-line-numbers span {
+  display: block;
+}
+.tiptap pre.code-block-scroll {
+  flex: 1 1 0;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  padding: 12px;
+  background: var(--card);
+  font-family: var(--font-family-code);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  white-space: pre;
+  overflow-x: auto;
+}
+.tiptap pre.code-block-scroll code {
+  display: block;
+  white-space: pre;
+  line-height: inherit;
+}
+.code-block-hint {
+  margin: 0;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-secondary);
+  line-height: var(--line-height-body);
+}
+
+.compact-tools .editor-more-format {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.compact-tools .editor-more-format[open] {
+  flex-basis: 100%;
+  margin-left: 0;
+}
+.compact-tools .editor-more-format summary {
+  padding: 4px 7px;
+  min-height: 32px;
+  line-height: var(--line-height-control);
+}
+.code-block-header .code-block-hint {
+  flex: 1 1 10rem;
+  padding: 0;
+  margin: 0;
+  border: 0;
 }
