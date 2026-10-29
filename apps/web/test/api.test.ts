@@ -65,3 +65,58 @@ test("权限错误保持服务端状态，不作为网络超时自动重试", as
     fetchMock.mock.restore();
   }
 });
+
+test("界面错误说明用用户语言，不直接显示服务端术语或内部信息", async () => {
+  const fetchMock = mock.method(
+    globalThis,
+    "fetch",
+    async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "INVALID_TOKEN",
+            message: "管理凭证格式无效（内部诊断）",
+          },
+        }),
+        { status: 422 },
+      ),
+  );
+  try {
+    await assert.rejects(
+      request("/spaces/test"),
+      (error) =>
+        error instanceof RequestError &&
+        error.code === "INVALID_TOKEN" &&
+        error.message === "链接不完整，请重新复制后打开。",
+    );
+  } finally {
+    fetchMock.mock.restore();
+  }
+});
+
+test("未知服务端错误不向用户展示维护信息", async () => {
+  const fetchMock = mock.method(
+    globalThis,
+    "fetch",
+    async () =>
+      new Response(
+        JSON.stringify({
+          error: {
+            code: "UNEXPECTED_DATABASE_FAILURE",
+            message: "SQLITE_BUSY /data/private.sqlite",
+          },
+        }),
+        { status: 500 },
+      ),
+  );
+  try {
+    await assert.rejects(
+      request("/spaces/test"),
+      (error) =>
+        error instanceof RequestError &&
+        error.message === "操作没有完成，请稍后重试。",
+    );
+  } finally {
+    fetchMock.mock.restore();
+  }
+});

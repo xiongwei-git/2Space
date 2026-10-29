@@ -64,18 +64,18 @@ export default function Editor({
     editable: !readOnly,
     editorProps: {
       attributes: {
-        "aria-label": readOnly ? "只读内容" : "编辑内容",
+        "aria-label": readOnly ? "查看内容" : "编辑内容",
         role: "textbox",
         "aria-multiline": "true",
       },
       transformPastedHTML: (value) => {
         if (/<img\b|<svg\b/i.test(value))
-          onNotice("当前支持文本和代码，图片将在二期提供。");
+          onNotice("图片不会粘贴，文字和常用格式已保留。");
         return sanitizeHtml(value);
       },
       handlePaste: (_view, event) => {
         if (event.clipboardData?.files.length) {
-          onNotice("图片将在二期提供，已保留可粘贴的文本与格式。");
+          onNotice("图片不会粘贴，文字和常用格式已保留。");
           if (
             !event.clipboardData.getData("text/html") &&
             !event.clipboardData.getData("text/plain")
@@ -86,7 +86,7 @@ export default function Editor({
       },
       handleDrop: (_view, event) => {
         if (event.dataTransfer?.files.length) {
-          onNotice("当前不支持图片或文件。");
+          onNotice("暂不支持图片或文件，请粘贴文字或代码。");
           return true;
         }
         return false;
@@ -106,7 +106,7 @@ export default function Editor({
     // Permission changes are presentation state, not a user edit or TTL renewal.
     editor?.setEditable(!readOnly, false);
   }, [editor, readOnly]);
-  if (!editor) return <div className="editor-loading">正在打开轻量编辑器…</div>;
+  if (!editor) return <div className="editor-loading">正在打开笔记…</div>;
   const tool = (
     label: string,
     title: string,
@@ -147,9 +147,9 @@ export default function Editor({
           {tool("引用", "引用", editor.isActive("blockquote"), () =>
             editor.chain().focus().toggleBlockquote().run(),
           )}
-          {tool("链接", "设置链接", editor.isActive("link"), () => {
+          {tool("链接", "插入或修改链接", editor.isActive("link"), () => {
             const url = window.prompt(
-              "链接地址（https://…）",
+              "粘贴完整网址",
               editor.getAttributes("link").href || "https://",
             );
             if (url === null) return;
@@ -158,7 +158,7 @@ export default function Editor({
               return;
             }
             if (!/^(https?:\/\/|mailto:)/i.test(url)) {
-              onNotice("请使用 http、https 或 mailto 链接。");
+              onNotice("请输入完整网址，例如 https://example.com。");
               return;
             }
             editor
@@ -203,7 +203,7 @@ export default function Editor({
               "sql",
             ].map((l) => (
               <option key={l} value={l}>
-                {l === "plaintext" ? "纯文本代码" : l}
+                {l === "plaintext" ? "不高亮" : l}
               </option>
             ))}
           </select>

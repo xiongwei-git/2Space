@@ -90,7 +90,7 @@ async function audit(
     fullPage: !modal,
     animations: "disabled",
     mask: [
-      page.locator('textarea[aria-label="只读分享链接"]'),
+      page.locator('textarea[aria-label="仅查看链接"]'),
       page.locator(".qr"),
       page.locator("[data-acceptance-private]"),
     ],
@@ -299,10 +299,7 @@ try {
     await page
       .locator(".tiptap")
       .fill("长文测试：内容在编辑区内部滚动，保存状态始终可见。\n".repeat(100));
-    await page
-      .locator(".save-state")
-      .filter({ hasText: "已加密保存" })
-      .waitFor();
+    await page.locator(".save-state").filter({ hasText: "已保存" }).waitFor();
     const scroller = page.locator(".editor-shell > div:last-child");
     await scroller.evaluate((el) => {
       el.scrollTop = el.scrollHeight;
@@ -358,7 +355,7 @@ try {
       };
     });
     await page.getByRole("button", { name: "分享空间", exact: true }).click();
-    await page.getByLabel("只读分享链接", { exact: true }).waitFor();
+    await page.getByLabel("仅查看链接", { exact: true }).waitFor();
     await page.locator(".qr").waitFor();
     assert.match(
       await page.locator(".share-status").innerText(),
@@ -411,7 +408,7 @@ try {
     );
     await audit(page, `${label}-named-workspace`, { editor: true });
     await page.getByRole("button", { name: "分享空间", exact: true }).click();
-    const linkField = page.getByLabel("只读分享链接", { exact: true });
+    const linkField = page.getByLabel("仅查看链接", { exact: true });
     await linkField.waitFor();
     await page.locator(".qr").waitFor();
     const link = await linkField.inputValue();
@@ -420,7 +417,7 @@ try {
     assert.ok(/^#r=[A-Za-z0-9_-]{22}$/.test(parsed.hash), "短只读能力为128bit");
     assert.equal(
       await page
-        .getByRole("button", { name: "生成只读链接", exact: true })
+        .getByRole("button", { name: "生成仅查看链接", exact: true })
         .count(),
       0,
       "无需再次生成",
@@ -438,19 +435,21 @@ try {
     );
     await audit(page, `${label}-compact-share`, { modal: true });
     await page.getByText("高级设置", { exact: true }).click();
-    await page.getByRole("button", { name: "更新链接", exact: true }).waitFor();
+    await page
+      .getByRole("button", { name: "更换分享链接", exact: true })
+      .waitFor();
     await audit(page, `${label}-share-advanced`, { modal: true });
     await page
-      .getByRole("button", { name: "撤销只读分享", exact: true })
+      .getByRole("button", { name: "关闭分享", exact: true })
       .scrollIntoViewIfNeeded();
     await audit(page, `${label}-share-advanced-actions`, { modal: true });
     await page.getByRole("button", { name: "关闭窗口", exact: true }).click();
     await page.reload();
     await page.locator('.tiptap[contenteditable="true"]').waitFor();
     await page.getByRole("button", { name: "分享空间", exact: true }).click();
-    await page.getByLabel("只读分享链接", { exact: true }).waitFor();
+    await page.getByLabel("仅查看链接", { exact: true }).waitFor();
     assert.ok(
-      (await page.getByLabel("只读分享链接", { exact: true }).inputValue()) ===
+      (await page.getByLabel("仅查看链接", { exact: true }).inputValue()) ===
         link,
       "刷新后默认分享仍复用",
     );
@@ -460,10 +459,10 @@ try {
     await anotherOwner
       .getByRole("button", { name: "分享空间", exact: true })
       .click();
-    await anotherOwner.getByLabel("只读分享链接", { exact: true }).waitFor();
+    await anotherOwner.getByLabel("仅查看链接", { exact: true }).waitFor();
     assert.ok(
       (await anotherOwner
-        .getByLabel("只读分享链接", { exact: true })
+        .getByLabel("仅查看链接", { exact: true })
         .inputValue()) === link,
       "另一管理页面复用同一分享",
     );
@@ -538,10 +537,7 @@ try {
     await audit(page, `${label}-offline-failure`, { editor: true });
     await context.setOffline(false);
     await page.getByRole("button", { name: "立即保存", exact: true }).click();
-    await page
-      .locator(".save-state")
-      .filter({ hasText: "已加密保存" })
-      .waitFor();
+    await page.locator(".save-state").filter({ hasText: "已保存" }).waitFor();
     // A simulated 409 exercises the real conflict UI without overwriting either version.
     await page.route("**/api/spaces/*/pages/*", async (route) => {
       if (route.request().method() === "PUT")
@@ -585,11 +581,11 @@ try {
     i: passwordIv.toString("base64url"),
   });
   await passwordPage.goto(`${address}/s/${space.id}#${passwordParams}`);
-  await passwordPage.getByLabel("解锁密码", { exact: true }).waitFor();
+  await passwordPage.getByLabel("访问密码", { exact: true }).waitFor();
   await audit(passwordPage, "mobile-legacy-password", { modal: true });
-  await passwordPage.getByLabel("解锁密码", { exact: true }).fill(password);
+  await passwordPage.getByLabel("访问密码", { exact: true }).fill(password);
   await passwordPage
-    .getByRole("button", { name: "解锁内容", exact: true })
+    .getByRole("button", { name: "打开空间", exact: true })
     .click();
   await passwordPage.locator('.tiptap[contenteditable="false"]').waitFor();
   await audit(passwordPage, "mobile-legacy-password-readonly", {

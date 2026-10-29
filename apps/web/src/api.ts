@@ -1,3 +1,4 @@
+import { userErrorMessage } from "./error-copy.js";
 export class RequestError extends Error {
   constructor(
     public status: number,
@@ -33,7 +34,7 @@ export async function request<T>(
       throw new RequestError(
         response.status,
         data?.error?.code || "NETWORK_ERROR",
-        data?.error?.message || "请求未完成，请重试",
+        userErrorMessage(data?.error?.code),
       );
     }
     if (response.status === 204) return undefined as T;

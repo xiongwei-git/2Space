@@ -117,7 +117,8 @@ export async function createShareDescriptor(
 ) {
   const { token, wrappingKey } = await deriveReader(seed);
   const keyBytes = decode(documentKey);
-  if (keyBytes.byteLength !== 32) throw new Error("空间密钥格式不正确");
+  if (keyBytes.byteLength !== 32)
+    throw new Error("无法打开空间，请重新复制完整链接。");
   const [keyEnvelope, ownerEnvelope] = await Promise.all([
     seal(keyBytes, wrappingKey),
     seal(
@@ -133,7 +134,8 @@ export async function unwrapReaderKey(
 ): Promise<string> {
   const { wrappingKey } = await deriveReader(seed);
   const bytes = await open(keyEnvelope, wrappingKey);
-  if (bytes.byteLength !== 32) throw new Error("分享密钥格式不正确");
+  if (bytes.byteLength !== 32)
+    throw new Error("分享链接无法打开，请向分享者索取新链接。");
   return encode(bytes);
 }
 export async function recoverShareSeed(
@@ -151,12 +153,12 @@ export async function recoverShareSeed(
     !("seed" in value) ||
     typeof value.seed !== "string"
   )
-    throw new Error("分享记录格式不正确");
+    throw new Error("分享链接暂时无法使用，请重试。");
   validateSeed(value.seed, "reader");
   if (
     (await unwrapReaderKey(descriptor.keyEnvelope, value.seed)) !== documentKey
   )
-    throw new Error("分享记录与当前空间不匹配");
+    throw new Error("这个分享链接无法打开此空间，请重新复制链接。");
   return value.seed;
 }
 export type Entry =
@@ -171,7 +173,7 @@ export function parseEntry(url: URL): Entry {
   if (url.pathname === "/") return { kind: "home" };
   const name = url.pathname.slice(1);
   if (!validSpaceName(name))
-    throw new Error("空间名称格式不正确，需3–32位小写字母、数字或中划线。");
+    throw new Error("名称需3–32个小写字母、数字或中划线，请检查后重试。");
   if (!url.hash || url.hash === "#") return { kind: "locked", name };
   if (params.size !== 1 || (!params.has("o") && !params.has("r")))
     throw new Error("链接不完整，请使用完整空间链接。");
@@ -186,7 +188,7 @@ export function compactLink(
   role: "owner" | "reader",
   seed: string,
 ): string {
-  if (!validSpaceName(name)) throw new Error("空间名称不可用");
+  if (!validSpaceName(name)) throw new Error("这个名称无法使用，请换一个。");
   validateSeed(seed, role);
   return `${origin}/${name}#${role === "owner" ? "o" : "r"}=${seed}`;
 }

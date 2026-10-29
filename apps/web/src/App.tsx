@@ -65,7 +65,9 @@ const retentionNames = [
   "1个月",
 ];
 function message(error: unknown) {
-  return error instanceof Error ? error.message : "操作未完成，请重试";
+  return error instanceof Error && /\p{Script=Han}/u.test(error.message)
+    ? error.message
+    : "操作没有完成，请稍后重试。";
 }
 function draftKey(space: string, page: string) {
   return `2space:draft:${space}:${page}`;
@@ -168,7 +170,7 @@ export default function App() {
     const timer = timers.current.get(pageId);
     if (timer) clearTimeout(timer);
     setConflicts(new Set(conflictRef.current));
-    setStatus("存在版本冲突，请选择保留方式");
+    setStatus("其他设备也有修改，请选择要保留的内容");
   }
   async function decodeSpace(view: SpaceView, a: Access, initial = false) {
     const seq = ++refreshSequence.current;
@@ -207,11 +209,11 @@ export default function App() {
               dirty.current.add(remote.record.id);
               if (draft.baseRevision !== remote.record.revision)
                 markConflict(remote.record.id);
-              setStatus("已恢复本机加密草稿，请检查后保存");
+              setStatus("已恢复上次未保存的内容，请检查后保存。");
               return { record: remote.record, doc };
             }
           } catch {
-            setNotice("本机草稿无法恢复，服务器版本仍可使用。");
+            setNotice("上次未保存的内容无法恢复，已为你打开保存过的内容。");
           }
         }
         return remote;
@@ -274,14 +276,17 @@ export default function App() {
       if (e instanceof RequestError && [401, 403, 404].includes(e.status)) {
         setOnline(false);
         setFatal(
-          "空间已过期、分享已撤销，或访问凭证无效。当前已打开的内容可复制备份。",
+          "这个链接已无法打开。空间可能已到期或停止分享，你仍可复制此页已显示的内容。",
         );
       } else if (
         e instanceof DOMException ||
         (e instanceof Error && e.message === "内容格式不正确")
       )
-        setFatal("无法解密此空间，请核对完整链接与解锁密钥。");
-      else setNotice("暂时无法同步，编辑草稿会保留在本机。");
+        setFatal("无法打开内容，请重新复制完整链接后打开。");
+      else
+        setNotice(
+          "暂时无法获取其他设备的修改。你在此页的修改还在，请稍后重试。",
+        );
     }
   }
   async function enter(a: Access, initialView?: SpaceView) {
@@ -289,7 +294,7 @@ export default function App() {
     accessRef.current = a;
     setAccess(a);
     setFatal("");
-    setStatus(a.role === "reader" ? "只读访问" : "已加密保存");
+    setStatus(a.role === "reader" ? "仅查看" : "已保存");
     if (initialView) await decodeSpace(initialView, a, true);
     else await refresh(true, a);
     setReady(true);
@@ -306,12 +311,12 @@ export default function App() {
         const { params, id } = entry;
         const token = params.get("m") || params.get("r"),
           key = params.get("k");
-        if (!token) throw Error("链接不完整，请使用包含访问凭证的完整链接。");
+        if (!token) throw Error("链接不完整，请重新复制后打开。");
         if (params.get("w")) {
           setUnlock(params);
           return;
         }
-        if (!key) throw Error("链接缺少解密密钥，请向分享者索取完整链接。");
+        if (!key) throw Error("链接不完整，请向分享者索取完整链接。");
         await enter({
           id,
           key,
@@ -338,7 +343,7 @@ export default function App() {
           token,
         );
         if (!view.readerKey)
-          throw Error("只读链接无效，请向分享者索取新链接。");
+          throw Error("分享链接已失效，请向分享者索取新链接。");
         const key = await unwrapReaderKey(view.readerKey, entry.seed);
         await enter(
           { id: view.id, key, token, role: view.role, name: entry.name },
@@ -348,9 +353,9 @@ export default function App() {
     } catch (error) {
       setFatal(
         error instanceof RequestError && [401, 403, 404].includes(error.status)
-          ? "空间已过期、分享已撤销，或访问码无效。请向分享者索取完整链接。"
+          ? "无法打开空间。请检查访问码，或向分享者索取新链接。"
           : error instanceof DOMException
-            ? "无法解密此空间，请核对完整链接。"
+            ? "无法打开内容，请重新复制完整链接后打开。"
             : message(error),
       );
     } finally {
@@ -404,7 +409,7 @@ export default function App() {
     if (busy) return;
     if (!validSpaceName(spaceName)) {
       setNotice(
-        "空间名称需3–32位小写字母、数字或中划线，首尾不能是中划线；保留名称不可用。",
+        "名称需3–32个小写字母、数字或中划线，首尾不能是中划线。请检查或换一个名称。",
       );
       return;
     }
@@ -437,7 +442,7 @@ export default function App() {
         },
         view,
       );
-      setNotice("空间已创建。请保存管理链接；只有名称无法找回内容。");
+      setNotice("空间已创建。请保存完整链接，只记住名称无法重新打开。");
     } catch (error) {
       if (error instanceof RequestError && error.code === "NAME_TAKEN") {
         setNameConflict(true);
@@ -467,7 +472,7 @@ export default function App() {
     retries.current.delete(id);
     const version = (editVersions.current.get(id) || 0) + 1;
     editVersions.current.set(id, version);
-    setStatus("未保存 · 正在准备加密");
+    setStatus("有修改尚未保存");
     const prior = timers.current.get(id);
     if (prior) clearTimeout(prior);
     void encryptDocument(doc, a.key).then((payload) => {
@@ -481,7 +486,7 @@ export default function App() {
             } satisfies Draft),
           );
         } catch {
-          setNotice("浏览器无法保存本机草稿，请保持页面打开。");
+          setNotice("未保存的修改只能暂留此页，请勿关闭，尽快保存或复制备份。");
         }
       }
     });
@@ -505,13 +510,13 @@ export default function App() {
     const item = pagesRef.current.find((p) => p.record.id === id);
     if (!item) return;
     saving.current.add(id);
-    setStatus("正在加密保存…");
+    setStatus("保存中…");
     const version = editVersions.current.get(id) || 0;
     let retry = false;
     try {
       const payload = await encryptDocument(item.doc, a.key);
       if (decode(payload.ciphertext).byteLength > MAX_CIPHERTEXT_BYTES)
-        throw Error("内容超出单篇容量，请拆成多篇笔记。");
+        throw Error("单篇内容超出限制，请分成几篇笔记后保存。");
       const record = await request<PageRecord>(
         `/spaces/${a.id}/pages/${id}`,
         a.token,
@@ -550,7 +555,7 @@ export default function App() {
           }
         }
       }
-      setStatus(dirty.current.size ? "仍有草稿待保存" : "已加密保存");
+      setStatus(dirty.current.size ? "还有修改尚未保存" : "已保存");
     } catch (e) {
       if (e instanceof RequestError && e.status === 409) markConflict(id);
       else {
@@ -560,7 +565,7 @@ export default function App() {
             e.status === 429) &&
           !(e instanceof Error && e.message.includes("超出")) &&
           (retries.current.get(id) || 0) < 3;
-        setStatus(`保存失败：${message(e)}。草稿保留在本机`);
+        setStatus(`保存失败：${message(e)}。修改仍在此页，请勿关闭。`);
       }
     } finally {
       saving.current.delete(id);
@@ -606,7 +611,7 @@ export default function App() {
       );
       publish([...pagesRef.current, { record, doc }]);
       setActive(id);
-      setStatus("已加密保存");
+      setStatus("已保存");
       void refresh();
       return true;
     } catch (e) {
@@ -620,8 +625,7 @@ export default function App() {
     const a = accessRef.current,
       item = pagesRef.current.find((p) => p.record.id === active);
     if (!a || !item || pages.length <= 1) return;
-    if (!confirm("删除这篇笔记？服务器内容将被永久删除，此操作无法撤销。"))
-      return;
+    if (!confirm("删除这篇笔记？删除后无法找回。")) return;
     try {
       await request(`/spaces/${a.id}/pages/${active}`, a.token, "DELETE", {
         expectedRevision: item.record.revision,
@@ -646,12 +650,14 @@ export default function App() {
     try {
       if (keepLocal) {
         if (pages.length >= MAX_PAGES) {
-          setNotice("请先下载或复制本机草稿，再加载远端版本；空间最多6篇。");
+          setNotice(
+            "空间最多6篇笔记。请先复制或下载你的修改，再使用已保存的内容。",
+          );
           return;
         }
         const copied = await addPage({
           ...local.doc,
-          title: `${local.doc.title}（本机副本）`,
+          title: `${local.doc.title}（我的修改）`,
         });
         if (!copied) return;
       }
@@ -662,7 +668,7 @@ export default function App() {
       conflictRef.current.delete(local.record.id);
       setConflicts(new Set(conflictRef.current));
       await refresh();
-      setStatus("版本冲突已处理");
+      setStatus("已保留你选择的内容");
     } catch (e) {
       setNotice(message(e));
     }
@@ -683,11 +689,11 @@ export default function App() {
       else await navigator.clipboard.writeText(item.doc.text);
       setNotice(
         rich && typeof ClipboardItem !== "undefined"
-          ? "已复制内容与格式"
-          : "已复制纯文本",
+          ? "已复制，格式已保留。"
+          : "已复制文字。",
       );
     } catch {
-      setNotice("浏览器未允许复制，请在编辑区选中文字后手动复制。");
+      setNotice("自动复制未成功，请选中文字后手动复制。");
     }
   }
   function download() {
@@ -706,7 +712,7 @@ export default function App() {
   }
   async function ensureShareName(a: Access): Promise<string> {
     const remember = (view: SpaceView): string => {
-      if (!view.name) throw Error("空间名称绑定未完成，请重试。");
+      if (!view.name) throw Error("空间名称未保存，请重试。");
       const named = { ...a, name: view.name };
       accessRef.current = named;
       setAccess(named);
@@ -730,15 +736,15 @@ export default function App() {
           throw error;
       }
     }
-    throw Error("暂时无法分配空间名称，请重试。");
+    throw Error("暂时无法设置空间名称，请重试。");
   }
   async function copyShare(link: string) {
     try {
       await navigator.clipboard.writeText(link);
-      setShareMessage("只读链接已复制，另一端打开即可查看。");
+      setShareMessage("链接已复制，对方打开后可查看、复制和下载。");
     } catch {
       setShareMessage(
-        "链接已准备好，浏览器未允许自动复制。请点击复制或手动选择下方链接。",
+        "自动复制未成功，请点击复制按钮，或选中下方链接手动复制。",
       );
     }
   }
@@ -756,7 +762,7 @@ export default function App() {
         }),
       );
     } catch {
-      setShareMessage("链接已准备好，二维码暂时无法生成；可复制链接继续。");
+      setShareMessage("二维码暂时无法显示，请复制链接分享。");
     }
   }
   async function makeShare(replace = false, passwordLink = false) {
@@ -764,19 +770,21 @@ export default function App() {
     if (!a || a.role !== "owner" || preparingShare.current) return;
     if (
       replace &&
-      !confirm("更新链接会使之前所有只读链接失效，包括密码链接。确定继续？")
+      !confirm(
+        "更换后，之前的仅查看链接（包括带密码的链接）都将无法打开。是否继续？",
+      )
     )
       return;
     preparingShare.current = true;
     setBusy(true);
-    setShareMessage("正在准备只读链接…");
+    setShareMessage("正在准备分享链接…");
     try {
       for (const id of dirty.current) await save(id);
       const deadline = Date.now() + 16_000;
       while (saving.current.size && Date.now() < deadline)
         await new Promise((resolve) => setTimeout(resolve, 50));
       if (dirty.current.size)
-        throw Error("仍有内容未保存或存在冲突，请先处理，再分享最新内容。");
+        throw Error("还有修改未保存。请先保存，或选择要保留的内容，再分享。");
       const name = await ensureShareName(a);
       let descriptor = replace
         ? null
@@ -796,11 +804,11 @@ export default function App() {
         );
         descriptor = response.share;
       }
-      if (!descriptor) throw Error("分享记录未准备好，请重试。");
+      if (!descriptor) throw Error("分享链接暂时无法使用，请重试。");
       // A concurrent request may have won create-or-get; always recover the server's seed.
       const seed = await recoverShareSeed(descriptor, a.key);
       if (passwordLink) {
-        if (!sharePassword) throw Error("请先输入解锁密码。");
+        if (!sharePassword) throw Error("请先输入访问密码。");
         const { token } = await deriveReader(seed),
           wrapped = await wrapKey(a.key, sharePassword);
         await showShareLink(
@@ -808,7 +816,7 @@ export default function App() {
         );
       } else
         await showShareLink(compactLink(location.origin, name, "reader", seed));
-      if (replace) setNotice("只读链接已更新，之前的只读链接已失效。");
+      if (replace) setNotice("分享链接已更换，之前的仅查看链接已失效。");
     } catch (error) {
       setShareMessage(message(error));
     } finally {
@@ -822,8 +830,12 @@ export default function App() {
       await request(`/spaces/${access.id}/shares`, access.token, "DELETE");
       setShareLink("");
       setQr("");
-      setShareMessage("只读链接已撤销。已经被复制的内容无法收回。");
-      setNotice("只读链接已撤销。已经被复制的内容无法收回。");
+      setShareMessage(
+        "分享已关闭。之前的仅查看链接无法打开，对方已复制的内容无法收回。",
+      );
+      setNotice(
+        "分享已关闭。之前的仅查看链接无法打开，对方已复制的内容无法收回。",
+      );
     } catch (e) {
       setNotice(message(e));
     }
@@ -833,7 +845,7 @@ export default function App() {
       const url = new URL(openLink, location.origin);
       if (url.origin !== location.origin || parseEntry(url).kind === "home")
         throw Error("请输入本站完整的空间链接。");
-      if (dirty.current.size && !confirm("仍有草稿未保存，确定离开当前空间？"))
+      if (dirty.current.size && !confirm("还有修改未保存，确定离开此空间？"))
         return;
       location.assign(url.href);
       location.reload();
@@ -867,7 +879,7 @@ export default function App() {
     if (!a || a.role !== "owner" || busy) return;
     if (
       !confirm(
-        "永久删除整个空间及全部笔记？所有分享链接将失效，本机加密草稿也将清除。此操作无法恢复。",
+        "删除整个空间及全部笔记？所有链接都将失效，此设备上未保存的修改也会删除。删除后无法找回。",
       )
     )
       return;
@@ -955,7 +967,7 @@ export default function App() {
             <p>
               一段文字、一份代码，随手放下，换台设备接着用。
               <br />
-              轻量编辑，正文加密，分享由你决定。
+              保留原有格式，分享给其他设备或朋友。
             </p>
             {lockedName ? (
               <form
@@ -975,7 +987,7 @@ export default function App() {
                   spellCheck={false}
                 />
                 <p className="entry-hint">
-                  空间名称是公开的，需访问码才能查看。请向分享者索取。
+                  请输入访问码，或向分享者索取完整链接。
                 </p>
                 <button
                   className="primary large"
@@ -1011,10 +1023,10 @@ export default function App() {
                   />
                 </div>
                 <p id="spaceNameHint" className="entry-hint">
-                  可修改随机名称；3–32位小写字母、数字或中划线。名称公开，请勿填写敏感信息。
+                  名称可修改，支持3–32个小写字母、数字或中划线。它会显示在链接里，请勿使用私人信息。
                 </p>
                 <button className="primary large" disabled={busy || !!unlock}>
-                  {busy ? "正在准备空间…" : "创建我的空间"}
+                  {busy ? "正在创建…" : "创建我的空间"}
                 </button>
                 {nameConflict && (
                   <button
@@ -1027,7 +1039,7 @@ export default function App() {
                 )}
               </form>
             )}
-            <small>无需注册 · 默认保留1天 · 请妥善保存管理链接</small>
+            <small>无需注册。默认保存1天，请保存好完整链接。</small>
           </div>
           <div
             className="welcome-preview"
@@ -1052,7 +1064,7 @@ export default function App() {
                 </code>
               </pre>
               <div className="preview-footer">
-                <span>正文在浏览器加密</span>
+                <span>内容加密保存</span>
                 <b>另一端接着用 ↗</b>
               </div>
             </div>
@@ -1068,7 +1080,9 @@ export default function App() {
               </span>
             </div>
             <p className="space-mode">
-              {reader ? "只读访问 · 可复制与下载" : "私密空间 · 管理链接可编辑"}
+              {reader
+                ? "仅查看，可复制和下载"
+                : "拿到此链接的人也能修改所有笔记"}
             </p>
             <nav aria-label="笔记列表">
               {pages.map((p, index) => (
@@ -1087,7 +1101,7 @@ export default function App() {
                     <small>{p.doc.text.slice(0, 32) || "还没有内容"}</small>
                   </span>
                   {conflicts.has(p.record.id) && (
-                    <span className="conflict-dot" title="版本冲突">
+                    <span className="conflict-dot" title="其他设备也有修改">
                       !
                     </span>
                   )}
@@ -1105,10 +1119,10 @@ export default function App() {
             )}
             <div className="space-details">
               <span className={online ? "connection connected" : "connection"}>
-                {online ? "同步已连接" : "正在连接同步"}
+                {online ? "内容实时更新" : "正在连接，请稍候"}
               </span>
               <label>
-                保留时间
+                保存时长
                 <select
                   disabled={reader || busy}
                   value={space?.retentionSeconds || 86400}
@@ -1122,7 +1136,7 @@ export default function App() {
                         { retentionSeconds: Number(e.target.value) },
                       );
                       setSpace(next);
-                      setNotice("保留时间已更新，从最近修改时间起算。");
+                      setNotice("保存时长已更新。");
                     } catch (error) {
                       setNotice(message(error));
                     }
@@ -1136,10 +1150,10 @@ export default function App() {
                 </select>
               </label>
               <small>
-                每次修改重新计时，访问不会续期。
+                修改后重新计算保存时间，打开空间不会延长时间。
                 {space && (
                   <>
-                    预计到期
+                    到期时间
                     <br />
                     {new Date(space.expiresAt).toLocaleString("zh-CN")}
                   </>
@@ -1150,7 +1164,7 @@ export default function App() {
           <section className="document-panel">
             <div className="document-header">
               <div className="document-title">
-                <span>{reader ? "只读笔记" : "轻量笔记"}</span>
+                <span>{reader ? "仅查看" : "可编辑"}</span>
                 <input
                   aria-label="笔记标题"
                   placeholder="未命名笔记"
@@ -1164,44 +1178,44 @@ export default function App() {
               </div>
               <div className="document-actions">
                 <button onClick={() => void copy(true)} className="secondary">
-                  复制格式
+                  复制内容
                 </button>
                 <button onClick={() => void copy()} className="text-button">
-                  纯文本
+                  仅复制文字
                 </button>
                 <button onClick={download} className="text-button">
-                  下载
+                  下载文字
                 </button>
               </div>
             </div>
             {conflicts.has(active) && (
               <div className="conflict-banner" role="alert">
-                <b>另一端也修改了这篇笔记</b>
+                <b>其他设备也修改了这篇笔记</b>
                 <p>
-                  本机内容还在，没有覆盖任何版本。先保留为新笔记，或放弃本机修改并加载远端版本。
+                  你的修改还在。可以另存为新笔记，或放弃此页修改，使用其他设备保存的内容。
                 </p>
                 <button
                   className="secondary"
                   onClick={() => void resolveConflict(true)}
                 >
-                  保留本机副本
+                  另存为新笔记
                 </button>
                 <button
                   className="text-button"
                   onClick={() => {
-                    if (confirm("放弃本机未保存修改，加载远端版本？"))
+                    if (
+                      confirm("放弃此页未保存的修改，使用其他设备保存的内容？")
+                    )
                       void resolveConflict(false);
                   }}
                 >
-                  加载远端版本
+                  使用已保存的内容
                 </button>
               </div>
             )}
             {current ? (
               <Suspense
-                fallback={
-                  <div className="editor-loading">正在打开轻量编辑器…</div>
-                }
+                fallback={<div className="editor-loading">正在打开笔记…</div>}
               >
                 <Editor
                   html={current.doc.html}
@@ -1213,7 +1227,7 @@ export default function App() {
                 />
               </Suspense>
             ) : (
-              <div className="editor-loading">正在解密内容…</div>
+              <div className="editor-loading">正在读取内容…</div>
             )}
             <footer className="document-footer">
               <span
@@ -1224,7 +1238,7 @@ export default function App() {
                 }
                 role="status"
               >
-                {reader ? "只读内容" : status}
+                {reader ? "查看内容" : status}
               </span>
               <span className="character-count">
                 {current?.doc.text.length || 0} 字符
@@ -1278,25 +1292,19 @@ export default function App() {
             </button>
             {modal === "privacy" ? (
               <>
-                <h2>私密可控，说明白一点</h2>
-                <p>
-                  正文、笔记标题和代码在浏览器加密，服务器保存密文。服务器仍能看到空间编号、时间和内容大小。
-                </p>
+                <h2>链接与隐私</h2>
+                <p>内容加密保存。空间名称、保存时间和内容大小仍会被记录。</p>
                 <ul>
-                  <li>管理链接可以编辑，请只交给自己的设备。</li>
-                  <li>只读链接只能查看，可撤销。已经复制的内容无法收回。</li>
-                  <li>没有账户找回；请保存管理链接，密钥丢失无法解密。</li>
                   <li>
-                    本机待保存草稿同样加密。受感染的设备、恶意扩展或被篡改的网页仍可能读取内容。
+                    可编辑链接：拿到链接的人能查看、修改全部笔记，请勿公开分享。
                   </li>
+                  <li>仅查看链接：对方能查看、复制和下载，不能修改。</li>
+                  <li>请保存好完整链接或访问码，丢失后无法找回内容。</li>
                   <li>
-                    粘贴会去除脚本、图片和复杂样式，不会静默加载外部图片。
+                    请在信任的设备上使用。设备上的恶意软件或扩展可能读取内容。
                   </li>
+                  <li>粘贴的图片不会上传或加载，文字和常用格式会保留。</li>
                 </ul>
-                <p className="muted">
-                  当前为本地开发版本，公网部署必须使用
-                  HTTPS。没有广告和第三方统计。
-                </p>
                 {access?.role === "owner" && (
                   <div className="share-bottom">
                     <button
@@ -1315,7 +1323,9 @@ export default function App() {
             ) : modal === "open" ? (
               <>
                 <h2>打开另一个空间</h2>
-                <p>粘贴完整的管理或只读链接，解密信息只在浏览器处理。</p>
+                <p>
+                  粘贴完整链接即可打开。能否修改内容，取决于分享给你的链接。
+                </p>
                 <textarea
                   aria-label="空间链接"
                   value={openLink}
@@ -1328,27 +1338,29 @@ export default function App() {
               </>
             ) : (
               <>
-                <h2>把空间交给另一端</h2>
+                <h2>分享这个空间</h2>
                 <p>
-                  只读分享包含空间里的全部笔记。重复分享复用同一链接，不会让旧链接失效。
+                  对方能查看、复制和下载全部笔记，不能修改。再次分享仍使用同一个链接。
                 </p>
                 <div className="share-status" role="status">
-                  {shareMessage || "正在准备只读链接…"}
+                  {shareMessage || "正在准备分享链接…"}
                 </div>
                 {shareLink && (
                   <>
                     <textarea
-                      aria-label="只读分享链接"
+                      aria-label="仅查看链接"
                       readOnly
                       value={shareLink}
                       onFocus={(event) => event.currentTarget.select()}
                     />
-                    {qr && <img className="qr" src={qr} alt="只读空间二维码" />}
+                    {qr && (
+                      <img className="qr" src={qr} alt="仅查看链接二维码" />
+                    )}
                     <button
                       className="secondary"
                       onClick={() => void copyShare(shareLink)}
                     >
-                      复制只读链接
+                      复制仅查看链接
                     </button>
                   </>
                 )}
@@ -1357,7 +1369,7 @@ export default function App() {
                     className="secondary"
                     onClick={() => void makeShare()}
                   >
-                    重试准备分享
+                    重试
                   </button>
                 )}
                 <div className="share-bottom">
@@ -1368,30 +1380,32 @@ export default function App() {
                         .writeText(location.href)
                         .then(() =>
                           setShareMessage(
-                            "管理链接已复制，可修改内容，请仅交给信任的设备。",
+                            "可编辑链接已复制，拿到链接的人也能修改全部笔记。",
                           ),
                         )
                         .catch(() =>
-                          setShareMessage("请从地址栏复制管理链接。"),
+                          setShareMessage(
+                            "复制未成功，请从地址栏复制完整链接。",
+                          ),
                         )
                     }
                   >
-                    复制本机管理链接
+                    复制可编辑链接
                   </button>
                 </div>
                 <details className="share-advanced">
                   <summary>高级设置</summary>
                   <p>
-                    密码链接是可选的额外保护，链接会更长；生成密码链接不会停用现有短链接。
+                    可以为新链接设置密码。此前分享的链接仍可打开；如需停用，请先更换分享链接。
                   </p>
                   <label className="field-label">
-                    链接解锁密码
+                    访问密码
                     <input
                       type="password"
                       autoComplete="new-password"
                       value={sharePassword}
                       onChange={(event) => setSharePassword(event.target.value)}
-                      placeholder="输入额外解锁密码"
+                      placeholder="设置访问密码"
                     />
                   </label>
                   <button
@@ -1399,7 +1413,7 @@ export default function App() {
                     disabled={busy || !sharePassword}
                     onClick={() => void makeShare(false, true)}
                   >
-                    生成密码链接
+                    复制带密码的链接
                   </button>
                   <div className="share-bottom">
                     <button
@@ -1407,18 +1421,18 @@ export default function App() {
                       disabled={busy}
                       onClick={() => void makeShare(true)}
                     >
-                      更新链接
+                      更换分享链接
                     </button>
                     <button
                       className="text-button danger"
                       disabled={busy}
                       onClick={() => void revoke()}
                     >
-                      撤销只读分享
+                      关闭分享
                     </button>
                   </div>
                   <p className="risk-note">
-                    更新或撤销会使旧只读链接失效；已经复制的内容无法收回。
+                    更换链接或关闭分享后，之前的仅查看链接将无法打开。对方已复制的内容无法收回。
                   </p>
                 </details>
               </>
@@ -1438,10 +1452,10 @@ export default function App() {
               void unlockSpace();
             }}
           >
-            <h2>解锁这份空间</h2>
-            <p>输入分享者提供的密码。密码仅在本机用于解密。</p>
+            <h2>输入访问密码</h2>
+            <p>请输入分享者提供的密码。</p>
             <input
-              aria-label="解锁密码"
+              aria-label="访问密码"
               type="password"
               autoComplete="current-password"
               value={unlockPassword}
@@ -1449,7 +1463,7 @@ export default function App() {
               autoFocus
             />
             <button className="primary" disabled={busy}>
-              {busy ? "正在解锁…" : "解锁内容"}
+              {busy ? "正在打开…" : "打开空间"}
             </button>
           </form>
         </div>
