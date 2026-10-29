@@ -7,7 +7,7 @@ runtime: macbook
 repository_model: single-repo
 source_of_truth: github-origin
 git_platform: github
-git_visibility: unverified
+git_visibility: private
 origin_role: authoritative
 mirror_platform: none
 vps_clone_source: none
@@ -46,4 +46,9 @@ research/Jianla深度调研-2026-10-28.md保留在本机，research/被Git忽略
 
 ## 边界
 
-不提交密码/令牌/密钥/完整能力链接/运行数据库/测试会话。不改Shared Memory。用户本轮指定仓库维护代码，不扩大为公网服务发布、DNS/TLS配置或其他服务器变更。
+不提交密码/令牌/密钥/完整能力链接/运行数据库/测试会话。2026-10-29用户新增授权共享Web阅读基线与本机全局入口（保留既有profile.md改动），不修改frontend-design。范围为2Space本地试点，不批量修改其他项目、远程设备或公网服务。
+
+## Web阅读基线试点
+
+采用web-reading-v1：正文16px、控件和次要正文14px、12px仅用于明确元信息；Tokens统一管理，自动计算样式/对比度/axe与截图采集接入CI。30组合成场景与关键截图审查、17项功能测试、类型/格式、Docker构建及23项smoke通过。本机3210已更新，数据卷保留；更新前旧容器rootfs、前端和SQLite已备份，备份完整性通过，恢复演练未做。
+原生200%/400%缩放因浏览器控制未生效仍未验收；不能用根字体放大/320px等效重排冒称原生缩放通过。其他浏览器未验证；远端CI以GitHub对应提交的实际检查结果为准。共享Web规范已按用户授权同步至小咪（共享提交97ae6f7），全局入口与同版frontend-design已补齐、哈希核对通过；未同步2Space代码或修改小咪业务项目。详情见docs/ACCEPTANCE.md；不宣称全站WCAG AA合规。

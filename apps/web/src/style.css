@@ -1,12 +1,15 @@
+@import "./tokens.css";
+
 :root {
-  font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  color: #18253b;
+  font-family: var(--font-family-body);
+  line-height: var(--line-height-body);
+  color: var(--color-text-primary);
   background: #f3f6fa;
   font-synthesis: none;
-  font-weight: 400;
-  --blue: #3159db;
-  --line: #dee5f0;
-  --muted: #69758a;
+  font-weight: var(--font-weight-regular);
+  --blue: var(--color-action);
+  --line: var(--color-border);
+  --muted: var(--color-text-secondary);
 }
 * {
   box-sizing: border-box;
@@ -37,7 +40,7 @@ button:disabled {
 button:focus-visible,
 a:focus-visible,
 select:focus-visible {
-  outline: 3px solid #91a8f8;
+  outline: 3px solid var(--color-action);
   outline-offset: 3px;
 }
 button {
@@ -51,8 +54,9 @@ button {
   flex-direction: column;
 }
 .topbar {
-  height: 88px;
-  padding: 0 5%;
+  min-height: 88px;
+  flex-wrap: wrap;
+  padding: 16px 5%;
   display: flex;
   align-items: center;
   gap: 28px;
@@ -63,10 +67,10 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 12px;
-  color: #18253b;
+  color: var(--color-text-primary);
   text-decoration: none;
-  font-size: 26px;
-  font-weight: 750;
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-bold);
   letter-spacing: -1.2px;
 }
 .brand-symbol {
@@ -87,7 +91,7 @@ button {
   background: var(--blue);
 }
 .tagline {
-  font-size: 13px;
+  font-size: var(--font-size-secondary);
   color: var(--muted);
   border-left: 1px solid var(--line);
   padding-left: 25px;
@@ -104,8 +108,8 @@ button {
   border-radius: 8px;
   padding: 10px 16px;
   border: 1px solid transparent;
-  font-size: 13px;
-  font-weight: 600;
+  font-size: var(--font-size-secondary);
+  font-weight: var(--font-weight-strong);
   white-space: nowrap;
 }
 .primary {
@@ -134,10 +138,10 @@ button {
   background: #eef2fb;
 }
 .danger {
-  color: #ad4050;
+  color: var(--color-text-danger);
 }
 .large {
-  font-size: 15px;
+  font-size: var(--font-size-body);
   padding: 15px 27px;
 }
 .notice {
@@ -147,7 +151,7 @@ button {
   border: 1px solid #c8d6f4;
   background: #edf3ff;
   border-radius: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-secondary);
   display: flex;
   gap: 20px;
   align-items: center;
@@ -156,14 +160,14 @@ button {
   margin-left: auto;
   border: 0;
   background: transparent;
-  color: #69758a;
-  font-size: 20px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-heading);
 }
 .error-banner {
   padding: 14px 5%;
   background: #fff1ef;
   color: #9b3540;
-  font-size: 13px;
+  font-size: var(--font-size-secondary);
 }
 .welcome {
   display: grid;
@@ -177,27 +181,27 @@ button {
   width: 100%;
 }
 .intro-mark {
-  font-size: 13px;
+  font-size: var(--font-size-secondary);
   color: var(--blue);
-  font-weight: 600;
+  font-weight: var(--font-weight-strong);
   letter-spacing: 0.7px;
 }
 .welcome h1 {
-  font-size: clamp(35px, 4vw, 57px);
-  line-height: 1.35;
-  font-weight: 650;
+  font-size: var(--font-size-display);
+  line-height: var(--line-height-heading);
+  font-weight: var(--font-weight-strong);
   letter-spacing: -2px;
   margin: 24px 0;
 }
 .welcome p {
-  font-size: 15px;
-  line-height: 2;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
   color: var(--muted);
   margin: 0 0 32px;
 }
 .welcome small {
   display: block;
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
   color: var(--muted);
   margin-top: 17px;
 }
@@ -208,7 +212,7 @@ button {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   color: var(--muted);
   padding: 0 0 16px 16px;
 }
@@ -236,18 +240,18 @@ button {
   background: #e9eef8;
 }
 .preview-paper h2 {
-  font-size: 19px;
-  font-weight: 600;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-strong);
   margin: 0 0 20px;
 }
 .preview-paper p {
-  font-size: 13px;
+  font-size: var(--font-size-body);
   margin: 0 0 12px;
 }
 .preview-paper li {
-  font-size: 13px;
+  font-size: var(--font-size-body);
   color: #5c6d84;
-  line-height: 2;
+  line-height: var(--line-height-body);
 }
 .preview-paper ul {
   padding-left: 20px;
@@ -258,7 +262,7 @@ button {
   border-radius: 6px;
   color: #384868;
   overflow: auto;
-  font-size: 12px;
+  font-size: var(--font-size-body);
   margin: 25px 0;
 }
 .preview-paper pre span {
@@ -271,13 +275,13 @@ button {
 .preview-footer {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
-  color: #7b879a;
+  font-size: var(--font-size-secondary);
+  color: var(--color-text-secondary);
   gap: 15px;
 }
 .preview-footer b {
   color: var(--blue);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 .workspace {
   display: grid;
@@ -305,17 +309,17 @@ button {
   padding: 0 10px;
 }
 .sidebar h2 {
-  font-size: 14px;
+  font-size: var(--font-size-secondary);
   margin: 0;
-  font-weight: 650;
+  font-weight: var(--font-weight-strong);
 }
 .sidebar-heading > span {
-  font-size: 11px;
-  color: #8490a3;
+  font-size: var(--font-size-meta);
+  color: var(--color-text-secondary);
 }
 .space-mode {
-  font-size: 10px;
-  color: #8792a4;
+  font-size: var(--font-size-secondary);
+  color: var(--color-text-secondary);
   padding: 0 10px;
   margin: 10px 0 26px;
 }
@@ -345,27 +349,27 @@ button {
   color: #3159db;
 }
 .page-number {
-  font-size: 10px;
+  font-size: var(--font-size-meta);
   padding-top: 2px;
-  opacity: 0.65;
+  opacity: 1;
 }
 .page-item b {
   display: block;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   max-width: 155px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 600;
+  font-weight: var(--font-weight-strong);
 }
 .page-item small {
   display: block;
-  font-size: 10px;
+  font-size: var(--font-size-secondary);
   max-width: 155px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #8b96a7;
+  color: var(--color-text-secondary);
   margin-top: 5px;
 }
 .conflict-dot {
@@ -378,7 +382,7 @@ button {
   background: transparent;
   padding: 11px;
   border-radius: 7px;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   color: #62728c;
 }
 .space-details {
@@ -388,8 +392,8 @@ button {
 }
 .connection {
   display: block;
-  font-size: 10px;
-  color: #9d7951;
+  font-size: var(--font-size-secondary);
+  color: var(--color-text-warning);
   margin-bottom: 24px;
 }
 .connection:before {
@@ -402,12 +406,12 @@ button {
   margin-right: 7px;
 }
 .connection.connected {
-  color: #28755d;
+  color: var(--color-text-success);
 }
 .space-details label {
   display: block;
-  font-size: 11px;
-  color: #6e7b90;
+  font-size: var(--font-size-secondary);
+  color: var(--color-text-secondary);
 }
 .space-details select {
   display: block;
@@ -417,13 +421,13 @@ button {
   background: white;
   border-radius: 5px;
   width: 100%;
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
   color: #384868;
 }
 .space-details small {
-  font-size: 10px;
-  line-height: 1.8;
-  color: #8a94a5;
+  font-size: var(--font-size-secondary);
+  line-height: var(--line-height-body);
+  color: var(--color-text-secondary);
 }
 .document-panel {
   display: flex;
@@ -442,19 +446,19 @@ button {
   min-width: 0;
 }
 .document-title > span {
-  font-size: 10px;
-  color: #8b96a7;
+  font-size: var(--font-size-secondary);
+  color: var(--color-text-secondary);
   display: block;
   margin-bottom: 8px;
 }
 .document-title input {
-  font-size: 22px;
-  font-weight: 600;
+  font-size: var(--font-size-title);
+  font-weight: var(--font-weight-strong);
   border: 0;
   outline: none;
   padding: 3px 0;
   width: 100%;
-  color: #18253b;
+  color: var(--color-text-primary);
   background: transparent;
 }
 .document-title input:focus {
@@ -486,10 +490,10 @@ button {
 .tool {
   border: 0;
   background: transparent;
-  color: #6e7b90;
-  font-size: 11px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-secondary);
   min-width: 30px;
-  height: 29px;
+  min-height: 2.25rem;
   padding: 4px 8px;
   border-radius: 5px;
 }
@@ -499,7 +503,7 @@ button {
   color: #3159db;
 }
 .tool[aria-label="加粗"] {
-  font-weight: 800;
+  font-weight: var(--font-weight-bold);
 }
 .tool[aria-label="斜体"] {
   font-style: italic;
@@ -519,8 +523,8 @@ button {
   border: 0;
   background: #f3f6fa;
   border-radius: 4px;
-  font-size: 10px;
-  color: #69758a;
+  font-size: var(--font-size-secondary);
+  color: var(--color-text-secondary);
   max-width: 120px;
 }
 .editor-shell > div:last-child {
@@ -534,50 +538,51 @@ button {
   padding: 30px 35px;
   flex: 1;
   min-height: 340px;
-  font-size: 15px;
-  line-height: 1.8;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
   overflow-wrap: anywhere;
   color: #344158;
 }
 .tiptap p {
   margin: 0.5em 0;
+  max-width: 40em;
 }
 .tiptap > :first-child {
   margin-top: 0;
 }
 .tiptap h1 {
-  font-size: 26px;
+  font-size: var(--font-size-title);
 }
 .tiptap h2 {
-  font-size: 22px;
+  font-size: var(--font-size-title);
 }
 .tiptap h3 {
-  font-size: 18px;
+  font-size: var(--font-size-heading);
 }
 .tiptap blockquote {
   border-left: 3px solid #c3d0f1;
   margin: 16px 0;
   padding: 2px 18px;
-  color: #73819a;
+  color: var(--color-text-secondary);
 }
 .tiptap a {
   color: #3159db;
   text-decoration: underline;
 }
 .tiptap pre {
-  font-family: SFMono-Regular, Consolas, monospace;
+  font-family: var(--font-family-code);
   background: #f3f5f9;
   border: 1px solid #e8edf5;
   border-radius: 8px;
   padding: 17px 20px;
   white-space: pre;
   overflow-x: auto;
-  font-size: 13px;
-  line-height: 1.7;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
 }
 .tiptap code {
-  font-family: SFMono-Regular, Consolas, monospace;
-  font-size: 0.9em;
+  font-family: var(--font-family-code);
+  font-size: inherit;
   background: #f1f4f9;
   padding: 2px 4px;
   border-radius: 3px;
@@ -586,6 +591,11 @@ button {
   background: none;
   padding: 0;
   font-size: inherit;
+}
+/* Tiptap injects .ProseMirror pre later; preserve code layout regardless of load order. */
+.editor-shell .tiptap pre {
+  white-space: pre;
+  overflow-wrap: normal;
 }
 .tiptap .hljs-keyword,
 .tiptap .hljs-selector-tag {
@@ -597,10 +607,10 @@ button {
 }
 .tiptap .hljs-number,
 .tiptap .hljs-literal {
-  color: #b57135;
+  color: var(--color-code-number);
 }
 .tiptap .hljs-comment {
-  color: #8996a9;
+  color: var(--color-text-secondary);
 }
 .tiptap table {
   border-collapse: collapse;
@@ -617,7 +627,7 @@ button {
 }
 .tiptap th {
   background: #f4f7fc;
-  font-weight: 600;
+  font-weight: var(--font-weight-strong);
 }
 .tiptap .selectedCell {
   background: #eaf0ff;
@@ -625,7 +635,7 @@ button {
 .editor-loading {
   padding: 40px;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--font-size-secondary);
 }
 .document-footer {
   padding: 16px 28px;
@@ -633,27 +643,27 @@ button {
   display: flex;
   gap: 15px;
   align-items: center;
-  color: #8b96a7;
-  font-size: 10px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-secondary);
   flex-wrap: wrap;
 }
 .save-state {
-  color: #28755d;
+  color: var(--color-text-success);
   margin-right: auto;
 }
 .save-state.failed {
-  color: #ad4050;
+  color: var(--color-text-danger);
 }
 .document-footer .text-button {
-  font-size: 10px;
+  font-size: var(--font-size-secondary);
   padding: 3px;
 }
 .site-footer {
   padding: 0 5% 22px;
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
-  color: #9aa4b4;
+  font-size: var(--font-size-secondary);
+  color: var(--color-text-secondary);
   gap: 20px;
 }
 .modal-backdrop {
@@ -679,30 +689,30 @@ button {
   position: relative;
 }
 .modal h2 {
-  font-size: 22px;
+  font-size: var(--font-size-title);
   margin: 0 0 20px;
 }
 .modal p,
 .modal li {
-  font-size: 13px;
-  line-height: 1.9;
-  color: #64738b;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+  color: var(--color-text-secondary);
 }
 .modal ul {
   padding-left: 20px;
 }
 .modal small {
-  font-size: 10px;
-  color: #8b96a7;
-  line-height: 1.7;
+  font-size: var(--font-size-secondary);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-body);
   display: block;
 }
 .modal-close {
   position: absolute;
   top: 13px;
   right: 15px;
-  font-size: 24px;
-  color: #8390a3;
+  font-size: var(--font-size-title);
+  color: var(--color-text-secondary);
   border: 0;
   background: transparent;
 }
@@ -715,7 +725,7 @@ button {
   border-radius: 7px;
   color: #344158;
   outline: none;
-  font-size: 12px;
+  font-size: var(--font-size-body);
 }
 .modal textarea {
   resize: vertical;
@@ -728,8 +738,8 @@ button {
 }
 .field-label {
   display: block;
-  font-size: 12px;
-  color: #64738b;
+  font-size: var(--font-size-secondary);
+  color: var(--color-text-secondary);
 }
 .qr {
   display: block;
@@ -746,12 +756,16 @@ button {
   gap: 10px;
 }
 .share-bottom button {
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
   padding: 7px 0;
 }
+.modal .risk-note {
+  color: var(--color-text-danger);
+  font-weight: var(--font-weight-strong);
+}
 .muted {
-  color: #8894a8 !important;
-  font-size: 11px !important;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-secondary);
 }
 .conflict-banner {
   margin: 20px 30px 0;
@@ -759,14 +773,14 @@ button {
   border: 1px solid #e9d7ac;
   padding: 18px;
   border-radius: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-secondary);
   color: #85612b;
 }
 .conflict-banner p {
-  line-height: 1.8;
+  line-height: var(--line-height-body);
 }
 .conflict-banner button {
-  font-size: 11px;
+  font-size: var(--font-size-secondary);
 }
 @media (min-width: 1500px) {
   .workspace {
@@ -784,7 +798,7 @@ button {
     padding: 8vh 6%;
   }
   .welcome h1 {
-    font-size: 36px;
+    font-size: var(--font-size-display-compact);
   }
   .preview-paper {
     padding: 25px;
@@ -811,7 +825,7 @@ button {
     padding: 25px;
   }
   .document-title input {
-    font-size: 20px;
+    font-size: var(--font-size-heading);
   }
   .page-item b,
   .page-item small {
@@ -825,7 +839,7 @@ button {
   }
   .topbar {
     padding: 0 4%;
-    height: 76px;
+    min-height: 76px;
   }
   .top-actions {
     gap: 8px;
@@ -833,12 +847,12 @@ button {
 }
 @media (max-width: 600px) {
   .topbar {
-    height: 72px;
+    min-height: 72px;
     gap: 10px;
     padding: 0 18px;
   }
   .brand {
-    font-size: 23px;
+    font-size: var(--font-size-title);
     gap: 8px;
   }
   .brand-symbol {
@@ -853,12 +867,12 @@ button {
     gap: 2px;
   }
   .top-actions .text-button {
-    font-size: 10px;
+    font-size: var(--font-size-secondary);
     padding: 7px;
   }
   .top-actions .primary,
   .top-actions .secondary {
-    font-size: 11px;
+    font-size: var(--font-size-secondary);
     padding: 8px 9px;
   }
   .welcome {
@@ -869,18 +883,18 @@ button {
     gap: 45px;
   }
   .welcome h1 {
-    font-size: 38px;
+    font-size: var(--font-size-display-compact);
     letter-spacing: -1.5px;
     margin: 19px 0;
   }
   .welcome p {
-    font-size: 13px;
+    font-size: var(--font-size-body);
   }
   .welcome small {
-    font-size: 10px;
+    font-size: var(--font-size-secondary);
   }
   .intro-mark {
-    font-size: 11px;
+    font-size: var(--font-size-secondary);
   }
   .welcome-preview {
     padding-right: 10px;
@@ -889,14 +903,14 @@ button {
     padding: 25px;
   }
   .preview-paper h2 {
-    font-size: 16px;
+    font-size: var(--font-size-body);
   }
   .preview-paper p,
   .preview-paper li {
-    font-size: 12px;
+    font-size: var(--font-size-secondary);
   }
   .preview-footer {
-    font-size: 9px;
+    font-size: var(--font-size-secondary);
   }
   .workspace {
     display: flex;
@@ -911,7 +925,7 @@ button {
     border-bottom: 1px solid var(--line);
   }
   .sidebar-heading h2 {
-    font-size: 12px;
+    font-size: var(--font-size-secondary);
   }
   .sidebar-heading {
     padding: 0;
@@ -934,19 +948,19 @@ button {
     align-items: center;
   }
   .page-number {
-    font-size: 9px;
+    font-size: var(--font-size-meta);
   }
   .page-item small {
     display: none;
   }
   .page-item b {
-    font-size: 11px;
+    font-size: var(--font-size-secondary);
     max-width: 100px;
   }
   .add-page {
     margin: 10px 0 0;
     padding: 7px;
-    font-size: 11px;
+    font-size: var(--font-size-secondary);
     align-self: flex-start;
   }
   .space-details {
@@ -959,10 +973,10 @@ button {
   }
   .connection {
     margin: 0;
-    font-size: 9px;
+    font-size: var(--font-size-secondary);
   }
   .space-details label {
-    font-size: 9px;
+    font-size: var(--font-size-secondary);
     display: flex;
     align-items: center;
     gap: 6px;
@@ -972,7 +986,7 @@ button {
     width: auto;
     display: inline;
     margin: 0;
-    font-size: 10px;
+    font-size: var(--font-size-secondary);
     padding: 4px;
   }
   .space-details small {
@@ -983,29 +997,29 @@ button {
     gap: 12px;
   }
   .document-title input {
-    font-size: 20px;
+    font-size: var(--font-size-heading);
   }
   .document-actions {
     gap: 5px;
   }
   .document-actions button {
-    font-size: 11px;
+    font-size: var(--font-size-secondary);
     padding: 7px 11px;
   }
   .document-title > span {
-    font-size: 9px;
+    font-size: var(--font-size-secondary);
   }
   .editor-tools {
     padding: 8px 11px;
     gap: 2px;
   }
   .tool {
-    font-size: 10px;
+    font-size: var(--font-size-secondary);
     min-width: 26px;
     padding: 4px 6px;
   }
   .editor-tools select {
-    font-size: 9px;
+    font-size: var(--font-size-secondary);
     max-width: 90px;
   }
   .tool-divider {
@@ -1013,11 +1027,11 @@ button {
   }
   .tiptap {
     padding: 21px 18px;
-    font-size: 14px;
+    font-size: var(--font-size-body);
     min-height: 320px;
   }
   .tiptap pre {
-    font-size: 12px;
+    font-size: var(--font-size-body);
     padding: 13px;
   }
   .document-footer {
@@ -1026,11 +1040,11 @@ button {
   }
   .save-state {
     flex-basis: 100%;
-    font-size: 10px;
+    font-size: var(--font-size-secondary);
   }
   .site-footer {
     padding: 0 18px 18px;
-    font-size: 9px;
+    font-size: var(--font-size-secondary);
   }
   .modal-backdrop {
     padding: 15px;
@@ -1040,7 +1054,7 @@ button {
     max-height: 90dvh;
   }
   .modal h2 {
-    font-size: 20px;
+    font-size: var(--font-size-heading);
   }
   .conflict-banner {
     margin: 15px 15px 0;
@@ -1048,7 +1062,7 @@ button {
   }
   .notice {
     margin: 12px 12px 0;
-    font-size: 11px;
+    font-size: var(--font-size-secondary);
   }
   .share-bottom {
     flex-wrap: wrap;
@@ -1058,5 +1072,146 @@ button {
   * {
     transition: none !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* Desktop is a bounded workspace. Banners consume height; long documents scroll
+   inside EditorContent instead of pushing the save controls below the screen. */
+@media (min-width: 901px) and (min-height: 650px) {
+  .app-workspace {
+    height: 100dvh;
+    min-height: 0;
+  }
+  .app-workspace > .topbar,
+  .app-workspace > .notice,
+  .app-workspace > .error-banner,
+  .app-workspace > .site-footer,
+  .document-header,
+  .document-footer,
+  .editor-tools {
+    flex-shrink: 0;
+  }
+  .app-workspace .workspace {
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+  }
+  .document-panel,
+  .editor-shell,
+  .editor-shell > div:last-child {
+    min-height: 0;
+  }
+  .editor-shell > div:last-child,
+  .sidebar {
+    overflow-y: auto;
+  }
+  .sidebar {
+    min-height: 0;
+  }
+  .tiptap {
+    min-height: 100%;
+  }
+  .tiptap:focus-visible {
+    outline-offset: -2px;
+  }
+}
+
+/* Reading roles stay stable at every viewport; layout absorbs larger text. */
+.welcome-copy > p {
+  font-size: var(--font-size-lead);
+}
+.preview-paper p,
+.preview-paper li {
+  font-size: var(--font-size-body);
+}
+.notice,
+.error-banner,
+.conflict-banner {
+  line-height: var(--line-height-body);
+}
+.conflict-banner p {
+  font-size: var(--font-size-body);
+}
+.document-actions,
+.top-actions,
+.preview-footer,
+.share-bottom {
+  flex-wrap: wrap;
+}
+.document-footer .character-count,
+.site-footer .version {
+  font-size: var(--font-size-meta);
+}
+.document-footer .save-state {
+  font-size: var(--font-size-secondary);
+}
+.preview-paper pre {
+  font-family: var(--font-family-code);
+}
+.welcome,
+.welcome-copy,
+.welcome-preview,
+.preview-paper {
+  min-width: 0;
+}
+.modal-close,
+.notice button {
+  min-width: 2.25rem;
+  min-height: 2.25rem;
+  line-height: 1;
+}
+button,
+select,
+input {
+  line-height: var(--line-height-control);
+}
+input:focus-visible,
+textarea:focus-visible,
+.tiptap:focus-visible,
+pre:focus-visible {
+  outline: 2px solid var(--color-action);
+  outline-offset: 2px;
+}
+.space-details small {
+  display: block;
+}
+@media (max-width: 900px) {
+  .workspace {
+    grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  }
+}
+@media (max-width: 600px) {
+  .top-actions {
+    width: 100%;
+    margin-left: 0;
+    gap: 8px;
+  }
+  .topbar {
+    padding-block: 12px;
+  }
+  .welcome {
+    padding-inline: 20px;
+  }
+  .welcome h1 {
+    letter-spacing: -0.025em;
+  }
+  .preview-paper {
+    padding: 20px;
+  }
+  .space-mode {
+    display: block;
+    margin-bottom: 12px;
+  }
+  .space-details small {
+    flex-basis: 100%;
+  }
+  .space-details label {
+    margin-left: 0;
+    flex-wrap: wrap;
+  }
+  .document-actions {
+    width: 100%;
+  }
+  .editor-tools select {
+    max-width: 100%;
   }
 }

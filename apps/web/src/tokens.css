@@ -1,0 +1,32 @@
+/* web-reading-v1: semantic roles, default root 16px; no fixed root px override. */
+:root {
+  font-size: 100%;
+  --font-family-body:
+    system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --font-family-code:
+    ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --font-size-body: 1rem;
+  --font-size-secondary: 0.875rem;
+  --font-size-meta: 0.75rem;
+  --font-size-lead: 1.125rem;
+  --font-size-heading: 1.25rem;
+  --font-size-title: 1.5rem;
+  --font-size-display-compact: 2rem;
+  --font-size-display: clamp(2rem, 1.25rem + 2vw, 3rem);
+  --line-height-body: 1.75;
+  --line-height-control: 1.5;
+  --line-height-heading: 1.35;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-strong: 600;
+  --font-weight-bold: 700;
+  --color-text-primary: #18253b;
+  --color-text-secondary: #59677c;
+  --color-text-warning: #85612b;
+  --color-text-danger: #ad4050;
+  --color-text-success: #28755d;
+  --color-code-number: #965419;
+  --color-action: #3159db;
+  --color-border: #dee5f0;
+}

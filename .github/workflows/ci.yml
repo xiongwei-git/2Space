@@ -20,6 +20,18 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: npm run design:check
+      - run: npx playwright install --with-deps chromium
+      - name: Reading baseline, accessibility and screenshots
+        run: node scripts/visual-acceptance.mjs
+      - name: Reading acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reading-acceptance
+          path: output/design-acceptance/
+          retention-days: 7
+          if-no-files-found: ignore
       - run: docker build --target production --tag 2space:ci .
       - name: Docker API acceptance
         run: |

@@ -9,3 +9,9 @@
 - 不宣称绝对安全。匿名管理凭证丢失不可恢复，链接持有人拥有相应访问权。
 - 必须验证权限、冲突、过期、富文本清理、加密往返。共享规范与验收进度记docs/TASKS.md。
 - 禁止提交真实凭证、运行数据库、研究中复制的第三方脚本、测试会话或完整能力链接。
+
+## Web阅读验收
+
+- 采用共享 `web-reading-v1`（`~/CodeX/my-agent-shared-memory/codex/web-design-baseline.md`）；先读共享基线和frontend-design，具体角色、元信息清单、命令及验收边界见 `docs/DEVELOPMENT.md`。
+- 字阶由 `apps/web/src/tokens.css` 单点维护，正文16px、控件/次要正文14px、明确元信息12px。写CSS前输出或引用字阶表；不得通过手机断点或muted覆盖降低底线。
+- 视觉修改必须运行 `npm run test:visual` 并实际查看 `output/design-acceptance/` 截图；同时核对功能回归。失败先修复，截图生成不等于人工审查或全站WCAG合规。

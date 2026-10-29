@@ -49,7 +49,15 @@ export default function Editor({
           protocols: ["https", "http", "mailto"],
         },
       }),
-      CodeBlockLowlight.configure({ lowlight, defaultLanguage: "plaintext" }),
+      CodeBlockLowlight.configure({
+        lowlight,
+        defaultLanguage: "plaintext",
+        HTMLAttributes: {
+          tabindex: "0",
+          role: "region",
+          "aria-label": "代码块",
+        },
+      }),
       TableKit.configure({ table: { resizable: false } }),
     ],
     content: sanitizeHtml(html),
@@ -119,7 +127,7 @@ export default function Editor({
   return (
     <div className="editor-shell">
       {!readOnly && (
-        <div className="editor-tools" aria-label="文字格式">
+        <div className="editor-tools" role="group" aria-label="文字格式">
           {tool("B", "加粗", editor.isActive("bold"), () =>
             editor.chain().focus().toggleBold().run(),
           )}

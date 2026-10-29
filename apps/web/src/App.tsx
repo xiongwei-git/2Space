@@ -78,6 +78,55 @@ export default function App() {
     [unlock, setUnlock] = useState<URLSearchParams | null>(null),
     [unlockPassword, setUnlockPassword] = useState(""),
     [conflicts, setConflicts] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!modal && !unlock) return;
+    const previous = document.activeElement as HTMLElement | null;
+    const dialog = document.querySelector<HTMLElement>(".modal");
+    const background = Array.from(
+      document.querySelector(".app")?.children || [],
+    )
+      .filter((element) => !element.classList.contains("modal-backdrop"))
+      .map((element) => ({
+        element: element as HTMLElement,
+        inert: (element as HTMLElement).inert,
+      }));
+    for (const { element } of background) element.inert = true;
+    const controls = () =>
+      Array.from(
+        dialog?.querySelectorAll<HTMLElement>(
+          'button:not(:disabled),input:not(:disabled),textarea,select,a[href],[tabindex="0"]',
+        ) || [],
+      ).filter((element) => element.getClientRects().length > 0);
+    controls()[0]?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && modal) setModal(null);
+      if (event.key !== "Tab") return;
+      const items = controls();
+      const first = items[0],
+        last = items.at(-1);
+      if (
+        event.shiftKey &&
+        (document.activeElement === first ||
+          !dialog?.contains(document.activeElement))
+      ) {
+        event.preventDefault();
+        last?.focus();
+      } else if (
+        !event.shiftKey &&
+        (document.activeElement === last ||
+          !dialog?.contains(document.activeElement))
+      ) {
+        event.preventDefault();
+        first?.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => {
+      document.removeEventListener("keydown", handleKey);
+      for (const { element, inert } of background) element.inert = inert;
+      previous?.focus();
+    };
+  }, [modal, unlock]);
   const started = useRef(false),
     accessRef = useRef<Access | null>(null),
     pagesRef = useRef<LocalPage[]>([]),
@@ -676,7 +725,7 @@ export default function App() {
   const current = pages.find((p) => p.record.id === active),
     reader = access?.role === "reader";
   return (
-    <div className="app">
+    <div className={access ? "app app-workspace" : "app"}>
       <header className="topbar">
         <a className="brand" href="/" aria-label="2Space 首页">
           <span className="brand-symbol">
@@ -744,7 +793,11 @@ export default function App() {
             </button>
             <small>无需注册 · 默认保留1天 · 请妥善保存管理链接</small>
           </div>
-          <div className="welcome-preview" aria-label="内容传递示意">
+          <div
+            className="welcome-preview"
+            role="region"
+            aria-label="内容传递示意"
+          >
             <div className="preview-caption">
               <span className="dot" /> 在这里放下
             </div>
@@ -757,7 +810,7 @@ export default function App() {
                 <li>网页里有用的几句话</li>
                 <li>另一台电脑要用的命令</li>
               </ul>
-              <pre>
+              <pre tabIndex={0} role="region" aria-label="代码示例">
                 <code>
                   <span>const</span> space = <em>'just enough'</em>;
                 </code>
@@ -937,7 +990,9 @@ export default function App() {
               >
                 {reader ? "只读内容" : status}
               </span>
-              <span>{current?.doc.text.length || 0} 字符</span>
+              <span className="character-count">
+                {current?.doc.text.length || 0} 字符
+              </span>
               {!reader && (
                 <>
                   <button
@@ -960,7 +1015,7 @@ export default function App() {
         </main>
       )}
       <footer className="site-footer">
-        <span>2Space 1.0</span>
+        <span className="version">2Space 1.0</span>
         <span>文本与代码，现在刚刚好。</span>
       </footer>
       {modal && (
@@ -1015,7 +1070,9 @@ export default function App() {
                     >
                       删除整个空间
                     </button>
-                    <small>永久删除全部笔记，无法恢复。</small>
+                    <small className="risk-note">
+                      永久删除全部笔记，无法恢复。
+                    </small>
                   </div>
                 )}
               </>
@@ -1111,6 +1168,9 @@ export default function App() {
         <div className="modal-backdrop">
           <form
             className="modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label="解锁空间"
             onSubmit={(e) => {
               e.preventDefault();
               void unlockSpace();

@@ -53,6 +53,15 @@ docker compose -f compose.dev.yaml run --rm --no-deps app sh -c 'npm ci && npm r
 
 请先停止开发容器，避免两个进程同时修改依赖卷。
 
+Web 视觉修改还需执行阅读基线检查：
+
+```sh
+npx playwright install chromium
+npm run test:visual
+```
+
+该命令包含静态字号检查、构建及30组浏览器验收，使用临时数据库与随机本地端口，不连接现有笔记数据库。截图和脱敏报告写入被Git忽略的 `output/design-acceptance/`，需实际看图审查。字号角色、检查范围及原生缩放等未验收边界见 [开发规范](docs/DEVELOPMENT.md) 和 [验收记录](docs/ACCEPTANCE.md)。
+
 ## 隐私与权限边界
 
 - 正文和标题在浏览器使用 AES-GCM 加密，API 保存密文；空间标识、时间、大小等元数据仍对服务端可见。
