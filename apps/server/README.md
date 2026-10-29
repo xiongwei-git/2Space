@@ -16,3 +16,11 @@ SSE使用携带Bearer的fetch，不用查询参数鉴权。每连接15秒心跳�
 API写入只支持JSON。全局600次/分钟/IP，创建20次/小时/IP；`trustProxy=false`，生产反代下需先设计可信代理IP范围，不应直接放开X-Forwarded-For。
 
 扩容限制：单进程内SSE广播与限速、单SQLite库。1.0不声称多实例实时一致性。共享契约在根packages/shared及docs/API.md。
+
+## 命名空间与短分享增量
+
+命名规则及新协议见根 `docs/SHORT-LINKS.md`。启动时检查 `PRAGMA table_info(spaces)`，仅在缺列时添加nullable `name`，建立唯一索引及独立 `compact_shares` 表，不重建或覆盖原空间/正文/凭证。执行前由集成负责人备份运行数据库；本模块测试使用独立临时库，不接触生产3210。
+
+名称仅定位，GET by-name仍需Bearer。旧空间可绑定一次名称，名称绑定本身不延长保留期；到期名字可用于新空间，但旧凭证不会因此获得新空间权限。
+
+现代分享使用两份密文封装。API保存token哈希；对持有compact reader token的请求只返回keyEnvelope，对owner-only descriptor返回keyEnvelope和ownerEnvelope。create-or-get在SQLite IMMEDIATE事务内完成，重复请求返回同一descriptor，只有显式replace会轮换并清除旧v1读凭证。无body的v1 POST保持原响应与行为，不删除compact grant。撤销删除两类读权限，关闭现有reader SSE。

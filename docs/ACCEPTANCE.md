@@ -93,3 +93,33 @@
 用户明确要求同步后，仅将共享AGENTS读取入口、README索引及web-design-baseline.md提交至既有权威origin（97ae6f7），未提交本机profile.md原有改动。小咪共享仓库在干净、无未推送提交或分叉条件下fast-forward更新；三份共享文件哈希一致，仓库干净。
 
 小咪全局AGENTS原有规则保留并备份，只追加Web默认Skill与阅读门禁两个章节；缺失的frontend-design及LICENSE补齐为本机同版原文，内容校验一致。未复制会话、认证或整套本机配置，未修改其他业务项目，未同步2Space代码。新Codex聊天可读取新入口；已运行聊天不保证自动重载。
+
+## 命名空间与一步短分享回归（2026-10-29）
+
+本轮按 `docs/SHORT-LINKS.md` 增量契约验证；保留旧v1数据和链接。所有新增合成数据只进入临时SQLite，随机loopback端口或Fastify inject；不连接3210，不删除/覆盖本地生产空间，不重启其容器。
+
+已执行：`npm run build -w @2space/server && node scripts/short-links-acceptance.mjs`，43项隔离回归通过。覆盖命名/重名/非法/保留字、by-name鉴权、HKDF域隔离、compact descriptor恢复、默认重复及并发创建复用、不轮换已有能力、reader unwrap、v1同时可用、显式更新使旧v1/compact失效、撤销、旧空间绑定保持密文和到期时间。
+
+新增脚本不输出seed、正文密钥、token或完整链接，断言描述仅用非敏感业务文字；结束关闭应用并清除其临时数据库。现有v1 `acceptance.mjs`继续保留，不将其改成只接受新协议。
+
+最终执行：`npm run test:links` 共45项通过（在初次43项基础上新增裸名GET/HEAD入口与无明文检查）；`npm run test:visual` 共53组合成场景通过。保留既有30组的计算字号/行高/字重、对比度、axe、裁切、溢出、桌面高度、200%根字体与文字间距门禁，未放宽阈值或新增宽泛豁免。
+
+新增23组场景覆盖桌面1280、390及320宽度的自填命名空间、默认一步复制短分享、折叠/展开高级设置与滚动到底部操作、裸名访问码、compact只读、重名提示；另增加390px旧v1密码弹窗及实际解锁后只读。前三组创建高度回归还验证默认名称确为8位小写字母数字。新分享逐组验证刷新及另一管理页面复用同一完整链接，未轮换原能力；截图不保存链接。原三个分享弹窗场景模拟Clipboard写入被拒绝，必须显示手动复制指引；新三个获授浏览器剪贴板权限场景实际读取内存剪贴板，确认点击主分享按钮已复制，无二次生成动作。
+
+首次增强门禁抓到新 `p.share-status` 实际14px却落入弹窗正文16px规则；前端按其操作状态语义改为 `div role=status`，14px符合批准的次要/控件字阶，未调整测试判定。修复后完整53组重跑通过。
+
+交付任务实际查看 `desktop-compact-share.png`、`desktop-share-advanced.png`、`narrow-share-advanced-actions.png`、`narrow-name-conflict.png`、`mobile-named-access-code.png`：公开名称可见；完整链接、访问能力值与二维码遮罩；高级风险和操作在内部滚动区域可读。集成负责人仍需结合其他关键图审查；生成截图不等于已执行所有人工检查。报告 `output/design-acceptance/report.json` 状态passed，不含DOM/trace/请求或完整能力链接。
+
+本轮补齐Chromium合成环境旧v1密码输入与解锁后只读的完整浏览器流程，此项取代前述“密码流程未验收”的旧记录；实体手机、Safari/Firefox、原生缩放、自然到期、真实生产迁移恢复和独立安全审计仍未验收。这里只证明临时库及合成页面；不推断3210已更新或公网部署。
+
+### 集成负责人本地交付确认
+
+负责人另外实际看图desktop-welcome、desktop-compact-share、narrow-compact-share、narrow-share-advanced-actions、mobile-named-access-code、narrow-name-conflict，确认名称入口、14/16层级、窄屏风险/按钮及高级设置内部滚动可读，无新增字号豁免。原生浏览器缩放和其他浏览器仍未补验。
+
+最终全workspace类型检查及28项单元/集成测试（server16/web12）通过，格式检查通过。Docker生产镜像构建通过：主JS gzip92.51KB、编辑器延迟块171.26KB；沿用原loopback、非root与数据卷配置。
+
+更新前已对运行数据库执行SQLite在线一致性备份、integrity_check并保留旧镜像回退标签，文件在被忽略的output/backups/before-named-*（权限700目录/600文件）。第一次docker cp读取tmpfs失败后，改用docker exec只读取快照字节复制到本地文件，内容没有输出；完整性核对通过。未执行恢复演练。
+
+本地3210已更新，旧v1页面/资源/API smoke23项通过；迁移后将原spaces既有字段与pages全记录按固定顺序计算摘要，与更新前备份一致，确认没有改写既有密文、凭证、版本、时间或笔记。新增name列和compact_shares表及SQLite完整性检查通过，未清卷。
+
+另在3210新建独立合成空间，实际验证自填名称、compact管理入口、一步自动复制只读链接、reader访问码22字符、直接只读解密展示、刷新后分享链接保持一致。没有读取用户原有正文，也没有通过UI删除用户空间。测试空间默认1天过期；未配置公网域名。

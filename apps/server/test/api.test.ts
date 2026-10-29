@@ -358,6 +358,23 @@ test("static serving supports workspace paths without exposing sibling files", a
     const page = await app.inject("/s/11111111-1111-4111-8111-111111111111");
     assert.equal(page.statusCode, 200);
     assert.match(page.body, /2Space test/);
+    const namedPage = await app.inject("/my-space");
+    assert.equal(namedPage.statusCode, 200);
+    assert.match(namedPage.body, /2Space test/);
+    const namedHead = await app.inject({ method: "HEAD", url: "/my-space" });
+    assert.equal(namedHead.statusCode, 200);
+    assert.equal(namedHead.body, "");
+    assert.match(String(namedHead.headers["content-type"]), /text\/html/);
+    assert.equal(
+      (await app.inject({ method: "HEAD", url: "/privacy" })).statusCode,
+      404,
+    );
+    assert.equal(
+      (await app.inject({ method: "HEAD", url: "/assets/" })).statusCode,
+      404,
+    );
+    assert.equal((await app.inject("/privacy")).statusCode, 404);
+    assert.equal((await app.inject("/Name-With-Caps")).statusCode, 404);
     assert.equal((await app.inject("/api/unknown")).statusCode, 404);
     const traversal = await app.inject("/%2e%2e/%2e%2e/etc/passwd");
     assert.notEqual(traversal.statusCode, 200);

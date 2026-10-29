@@ -16,7 +16,8 @@
     "format": "prettier --write \"apps/**/*.{ts,tsx,css,json,html}\" \"packages/**/*.{ts,json}\" \"scripts/*.mjs\" \"docs/**/*.md\" \"*.{json,md,yaml}\" \".github/workflows/*.yml\"",
     "format:check": "prettier --check \"apps/**/*.{ts,tsx,css,json,html}\" \"packages/**/*.{ts,json}\" \"scripts/*.mjs\" \"docs/**/*.md\" \"*.{json,md,yaml}\" \".github/workflows/*.yml\"",
     "design:check": "node scripts/check-design.mjs",
-    "test:visual": "npm run design:check && npm run build && node scripts/visual-acceptance.mjs"
+    "test:visual": "npm run design:check && npm run build && node scripts/visual-acceptance.mjs",
+    "test:links": "npm run build -w @2space/server && node scripts/short-links-acceptance.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

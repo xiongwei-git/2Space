@@ -14,9 +14,46 @@ import type { ServerResponse } from "node:http";
 
 const RETENTION = [1800, 3600, 21600, 86400, 259200, 604800, 2592000];
 const MAX_BYTES = 400_000;
+const NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])$/;
+const RESERVED_NAMES = new Set([
+  "api",
+  "assets",
+  "s",
+  "privacy",
+  "share",
+  "health",
+  "robots",
+  "favicon",
+  "index",
+]);
+const nameValid = (name: unknown): name is string =>
+  typeof name === "string" &&
+  NAME_PATTERN.test(name) &&
+  !RESERVED_NAMES.has(name);
+const validName = (name: unknown): string =>
+  nameValid(name)
+    ? name
+    : fail(
+        422,
+        "INVALID_NAME",
+        "名称需为3–32位小写字母、数字或中划线，且不能使用保留名称",
+      );
+type CompactRow = {
+  space_id: string;
+  token_hash: string;
+  key_iv: string;
+  key_ciphertext: string;
+  owner_iv: string;
+  owner_ciphertext: string;
+};
+const compactView = (row: CompactRow) => ({
+  keyEnvelope: { iv: row.key_iv, ciphertext: row.key_ciphertext },
+  ownerEnvelope: { iv: row.owner_iv, ciphertext: row.owner_ciphertext },
+});
 type Envelope = { iv: string; ciphertext: string };
 type Row = {
   id: string;
+  name: string | null;
   owner_hash: string;
   reader_hash: string | null;
   revision: number;
@@ -78,11 +115,14 @@ const validId = (value: unknown): string =>
 const tokenValid = (value: unknown): value is string =>
   typeof value === "string" &&
   /^[A-Za-z0-9_-]{43}$/.test(value) &&
-  Buffer.from(value, "base64url").length === 32;
+  Buffer.from(value, "base64url").length === 32 &&
+  Buffer.from(value, "base64url").toString("base64url") === value;
 const hash = (value: string) =>
   createHash("sha256").update(value).digest("hex");
-const sameHash = (a: string, b: string) =>
-  a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const sameHash = (a: string, b: string | null | undefined) =>
+  !!b &&
+  a.length === b.length &&
+  timingSafeEqual(Buffer.from(a), Buffer.from(b));
 function envelope(value: unknown): Envelope {
   const v = object(value, ["iv", "ciphertext"]);
   const decode = (s: unknown) => {
@@ -129,6 +169,23 @@ export async function buildApp(options: AppOptions = {}) {
   db.exec(
     `CREATE TABLE IF NOT EXISTS spaces(id TEXT PRIMARY KEY,owner_hash TEXT NOT NULL,reader_hash TEXT,revision INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,expires_at TEXT NOT NULL,retention_seconds INTEGER NOT NULL); CREATE TABLE IF NOT EXISTS pages(id TEXT NOT NULL,space_id TEXT NOT NULL REFERENCES spaces(id) ON DELETE CASCADE,revision INTEGER NOT NULL DEFAULT 1,iv TEXT NOT NULL,ciphertext TEXT NOT NULL,updated_at TEXT NOT NULL,position INTEGER NOT NULL,PRIMARY KEY(space_id,id)); CREATE INDEX IF NOT EXISTS spaces_expiry ON spaces(expires_at);`,
   );
+  // Additive migration: v1 databases retain all ciphertext and existing capabilities.
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const columns = db.prepare("PRAGMA table_info(spaces)").all() as {
+      name: string;
+    }[];
+    if (!columns.some((column) => column.name === "name"))
+      db.exec("ALTER TABLE spaces ADD COLUMN name TEXT");
+    db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS spaces_name ON spaces(name) WHERE name IS NOT NULL; CREATE TABLE IF NOT EXISTS compact_shares(space_id TEXT PRIMARY KEY REFERENCES spaces(id) ON DELETE CASCADE,token_hash TEXT NOT NULL,key_iv TEXT NOT NULL,key_ciphertext TEXT NOT NULL,owner_iv TEXT NOT NULL,owner_ciphertext TEXT NOT NULL);",
+    );
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    db.close();
+    throw error;
+  }
   const app = Fastify({ logger: false, bodyLimit: 560_000, trustProxy: false });
   const streams = new Map<string, Set<Stream>>();
   const rates = new Map<string, { count: number; start: number }>();
@@ -136,11 +193,17 @@ export async function buildApp(options: AppOptions = {}) {
   const iso = () => new Date(now()).toISOString();
   const getRow = (id: string) =>
     db.prepare("SELECT * FROM spaces WHERE id=?").get(id) as Row | undefined;
-  function closeStreams(id: string, onlyReader = false) {
+  const getCompact = (id: string) =>
+    db.prepare("SELECT * FROM compact_shares WHERE space_id=?").get(id) as
+      CompactRow | undefined;
+  function closeStreams(id: string, onlyReader = false, tokenHash?: string) {
     const set = streams.get(id);
     if (!set) return;
     for (const s of [...set])
-      if (!onlyReader || s.role === "reader") {
+      if (
+        (!onlyReader || s.role === "reader") &&
+        (!tokenHash || sameHash(s.tokenHash, tokenHash))
+      ) {
         s.response.end();
         set.delete(s);
       }
@@ -153,8 +216,9 @@ export async function buildApp(options: AppOptions = {}) {
   function authenticate(
     req: FastifyRequest,
     ownerOnly = false,
+    resolvedId?: string,
   ): { space: Row; role: Role; tokenHash: string } {
-    const { id } = req.params as { id: string };
+    const id = resolvedId ?? (req.params as { id: string }).id;
     validId(id);
     const row = getRow(id);
     if (!row) return fail(404, "NOT_FOUND", "空间不存在或已过期");
@@ -170,19 +234,26 @@ export async function buildApp(options: AppOptions = {}) {
     const digest = hash(bearer);
     const role: Role = sameHash(digest, row.owner_hash)
       ? "owner"
-      : row.reader_hash && sameHash(digest, row.reader_hash)
+      : (row.reader_hash && sameHash(digest, row.reader_hash)) ||
+          sameHash(digest, getCompact(id)?.token_hash)
         ? "reader"
         : fail(401, "UNAUTHORIZED", "访问链接已失效");
     if (ownerOnly && role !== "owner")
       return fail(403, "READ_ONLY", "此链接仅允许查看");
     return { space: row, role, tokenHash: digest };
   }
-  function view(row: Row, role: Role) {
+  function view(row: Row, role: Role, tokenHash?: string) {
     const pages = db
       .prepare("SELECT * FROM pages WHERE space_id=? ORDER BY position")
       .all(row.id) as PageRow[];
     return {
       id: row.id,
+      ...(row.name ? { name: row.name } : {}),
+      ...(role === "reader" &&
+      tokenHash &&
+      sameHash(tokenHash, getCompact(row.id)?.token_hash)
+        ? { readerKey: compactView(getCompact(row.id)!).keyEnvelope }
+        : {}),
       revision: row.revision,
       pages: pages.map(pageView),
       createdAt: row.created_at,
@@ -191,6 +262,16 @@ export async function buildApp(options: AppOptions = {}) {
       retentionSeconds: row.retention_seconds,
       role,
     };
+  }
+  function assertNameAvailable(name: string, ownId?: string) {
+    const holder = db.prepare("SELECT * FROM spaces WHERE name=?").get(name) as
+      Row | undefined;
+    if (!holder || holder.id === ownId) return;
+    if (Date.parse(holder.expires_at) <= now()) {
+      destroySpace(holder.id);
+      return;
+    }
+    fail(409, "NAME_TAKEN", "名称已被使用，请打开已有空间或换一个名称");
   }
   function touch(id: string) {
     const row = getRow(id)!;
@@ -285,9 +366,15 @@ export async function buildApp(options: AppOptions = {}) {
   app.get("/api/health", async () => ({ status: "ok", version: "1.0.0" }));
   app.post("/api/spaces", async (req, reply) => {
     limit(createRates, req.ip, 20, 3600_000);
-    const body = object(req.body, ["ownerToken", "retentionSeconds", "page"]);
+    const body = object(req.body, [
+      "ownerToken",
+      "retentionSeconds",
+      "page",
+      "name",
+    ]);
     if (!tokenValid(body.ownerToken))
       fail(422, "INVALID_TOKEN", "管理凭证格式无效");
+    const name = body.name === undefined ? null : validName(body.name);
     const seconds =
       body.retentionSeconds === undefined
         ? 86400
@@ -300,9 +387,18 @@ export async function buildApp(options: AppOptions = {}) {
       expires = new Date(now() + seconds * 1000).toISOString();
     db.exec("BEGIN IMMEDIATE");
     try {
+      if (name) assertNameAvailable(name);
       db.prepare(
-        "INSERT INTO spaces(id,owner_hash,revision,created_at,updated_at,expires_at,retention_seconds) VALUES(?,?,1,?,?,?,?)",
-      ).run(id, hash(body.ownerToken as string), time, time, expires, seconds);
+        "INSERT INTO spaces(id,name,owner_hash,revision,created_at,updated_at,expires_at,retention_seconds) VALUES(?,?,?,1,?,?,?,?)",
+      ).run(
+        id,
+        name,
+        hash(body.ownerToken as string),
+        time,
+        time,
+        expires,
+        seconds,
+      );
       db.prepare(
         "INSERT INTO pages(id,space_id,revision,iv,ciphertext,updated_at,position) VALUES(?,?,1,?,?,?,0)",
       ).run(pid, id, encrypted.iv, encrypted.ciphertext, time);
@@ -313,9 +409,17 @@ export async function buildApp(options: AppOptions = {}) {
     }
     return reply.code(201).send(view(getRow(id)!, "owner"));
   });
+  app.get("/api/spaces/by-name/:name", async (req) => {
+    const name = validName((req.params as { name: string }).name);
+    const row = db.prepare("SELECT id FROM spaces WHERE name=?").get(name) as
+      { id: string } | undefined;
+    if (!row) return fail(404, "NOT_FOUND", "空间不存在或已过期");
+    const a = authenticate(req, false, row.id);
+    return view(a.space, a.role, a.tokenHash);
+  });
   app.get("/api/spaces/:id", async (req) => {
     const a = authenticate(req);
-    return view(a.space, a.role);
+    return view(a.space, a.role, a.tokenHash);
   });
   app.post("/api/spaces/:id/pages", async (req, reply) => {
     const a = authenticate(req, true),
@@ -426,35 +530,127 @@ export async function buildApp(options: AppOptions = {}) {
   });
   app.patch("/api/spaces/:id", async (req) => {
     const a = authenticate(req, true),
-      body = object(req.body, ["retentionSeconds"]),
-      seconds = retention(body.retentionSeconds);
-    db.prepare(
-      "UPDATE spaces SET retention_seconds=?,revision=revision+1,updated_at=?,expires_at=? WHERE id=?",
-    ).run(
-      seconds,
-      iso(),
-      new Date(now() + seconds * 1000).toISOString(),
-      a.space.id,
-    );
+      body = object(req.body, ["name", "retentionSeconds"]);
+    if (!Object.keys(body).length)
+      fail(422, "INVALID_INPUT", "请提供名称或保留时间");
+    const name = body.name === undefined ? undefined : validName(body.name);
+    const seconds =
+      body.retentionSeconds === undefined
+        ? undefined
+        : retention(body.retentionSeconds);
+    if (name && a.space.name && name !== a.space.name)
+      fail(409, "NAME_LOCKED", "空间名称绑定后不能修改");
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      if (name && !a.space.name) {
+        assertNameAvailable(name, a.space.id);
+        db.prepare(
+          "UPDATE spaces SET name=?,revision=revision+1 WHERE id=?",
+        ).run(name, a.space.id);
+      }
+      if (seconds !== undefined)
+        db.prepare(
+          "UPDATE spaces SET retention_seconds=?,revision=revision+1,updated_at=?,expires_at=? WHERE id=?",
+        ).run(
+          seconds,
+          iso(),
+          new Date(now() + seconds * 1000).toISOString(),
+          a.space.id,
+        );
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
     notify(a.space.id);
     return view(getRow(a.space.id)!, "owner");
   });
+  app.get("/api/spaces/:id/shares", async (req) => {
+    const a = authenticate(req, true),
+      share = getCompact(a.space.id);
+    return { share: share ? compactView(share) : null };
+  });
   app.post("/api/spaces/:id/shares", async (req, reply) => {
     const a = authenticate(req, true);
-    if (req.body !== undefined) object(req.body, []);
-    const token = randomBytes(32).toString("base64url");
-    db.prepare(
-      "UPDATE spaces SET reader_hash=?,revision=revision+1 WHERE id=?",
-    ).run(hash(token), a.space.id);
-    closeStreams(a.space.id, true);
-    notify(a.space.id);
-    return reply.code(201).send({ token });
+    const body =
+      req.body === undefined
+        ? undefined
+        : object(req.body, [
+            "token",
+            "keyEnvelope",
+            "ownerEnvelope",
+            "replace",
+          ]);
+    // Keep the body-less v1 operation and its response shape intact.
+    if (body === undefined || !Object.keys(body).length) {
+      const token = randomBytes(32).toString("base64url");
+      db.prepare(
+        "UPDATE spaces SET reader_hash=?,revision=revision+1 WHERE id=?",
+      ).run(hash(token), a.space.id);
+      if (a.space.reader_hash)
+        closeStreams(a.space.id, true, a.space.reader_hash);
+      notify(a.space.id);
+      return reply.code(201).send({ token });
+    }
+    if (!tokenValid(body.token)) fail(422, "INVALID_TOKEN", "分享凭证格式无效");
+    if (body.replace !== undefined && typeof body.replace !== "boolean")
+      fail(422, "INVALID_INPUT", "更新选项无效");
+    const key = envelope(body.keyEnvelope),
+      owner = envelope(body.ownerEnvelope);
+    if (
+      Buffer.from(key.ciphertext, "base64url").length !== 48 ||
+      Buffer.from(owner.ciphertext, "base64url").length > 1024
+    )
+      fail(422, "INVALID_PAYLOAD", "分享封装格式无效");
+    let created = false;
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      const existing = getCompact(a.space.id);
+      if (!existing || body.replace === true) {
+        db.prepare(
+          "INSERT INTO compact_shares(space_id,token_hash,key_iv,key_ciphertext,owner_iv,owner_ciphertext) VALUES(?,?,?,?,?,?) ON CONFLICT(space_id) DO UPDATE SET token_hash=excluded.token_hash,key_iv=excluded.key_iv,key_ciphertext=excluded.key_ciphertext,owner_iv=excluded.owner_iv,owner_ciphertext=excluded.owner_ciphertext",
+        ).run(
+          a.space.id,
+          hash(body.token as string),
+          key.iv,
+          key.ciphertext,
+          owner.iv,
+          owner.ciphertext,
+        );
+        if (body.replace === true)
+          db.prepare(
+            "UPDATE spaces SET reader_hash=NULL,revision=revision+1 WHERE id=?",
+          ).run(a.space.id);
+        else
+          db.prepare("UPDATE spaces SET revision=revision+1 WHERE id=?").run(
+            a.space.id,
+          );
+        created = true;
+      }
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+    if (body.replace === true) closeStreams(a.space.id, true);
+    if (created) notify(a.space.id);
+    return reply
+      .code(created ? 201 : 200)
+      .send({ share: compactView(getCompact(a.space.id)!) });
   });
   app.delete("/api/spaces/:id/shares", async (req, reply) => {
     const a = authenticate(req, true);
-    db.prepare(
-      "UPDATE spaces SET reader_hash=NULL,revision=revision+1 WHERE id=?",
-    ).run(a.space.id);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      db.prepare("DELETE FROM compact_shares WHERE space_id=?").run(a.space.id);
+      db.prepare(
+        "UPDATE spaces SET reader_hash=NULL,revision=revision+1 WHERE id=?",
+      ).run(a.space.id);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
     closeStreams(a.space.id, true);
     notify(a.space.id);
     return reply.code(204).send();
@@ -493,7 +689,9 @@ export async function buildApp(options: AppOptions = {}) {
       if (
         !row ||
         Date.parse(row.expires_at) <= now() ||
-        (stream.role === "reader" && row.reader_hash !== stream.tokenHash)
+        (stream.role === "reader" &&
+          !sameHash(stream.tokenHash, row.reader_hash) &&
+          !sameHash(stream.tokenHash, getCompact(a.space.id)?.token_hash))
       ) {
         reply.raw.end();
         return;
@@ -531,8 +729,13 @@ export async function buildApp(options: AppOptions = {}) {
     const path = req.url.split("?")[0];
     if (
       existsSync(resolve(webRoot, "index.html")) &&
-      req.method === "GET" &&
-      (path === "/" || /^\/s\/[0-9a-f-]+$/.test(path))
+      (req.method === "GET" ||
+        (req.method === "HEAD" &&
+          path?.startsWith("/") &&
+          nameValid(path.slice(1)))) &&
+      (path === "/" ||
+        /^\/s\/[0-9a-f-]+$/.test(path) ||
+        (path?.startsWith("/") && nameValid(path.slice(1))))
     )
       return reply.type("text/html").sendFile("index.html");
     return reply

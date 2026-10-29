@@ -6,7 +6,7 @@ flowchart LR
   API --> DB[(SQLite 持久卷<br/>密文/令牌哈希/版本/时间)]
   API -->|SSE版本通知| B[设备B浏览器<br/>本地解密展示]
   B -->|鉴权后拉取密文| API
-  A -.->|链接fragment:密钥与能力凭证| B
+  A -.->|链接fragment:派生种子或旧密钥凭证| B
   API --> TTL[到期检查与后台清理]
 ```
 
@@ -41,3 +41,7 @@ flowchart LR
 ## 并行协作
 
 共享契约先冻结；T1/T2/T3以目录分工并行，负责人统一安装依赖、锁文件与集成。完成条件是代码+对应测试+差异说明；没有测试结果不能标完成。后续多开发者使用feature分支/worktree和PR，禁止交叉修改公共契约而无版本协调。
+
+## 命名与短分享增量
+
+新space具有唯一公开name，旧UUID API不变。新owner从单seed派生正文key/auth；reader通过独立seed派生wrappingKey/auth，鉴权取keyEnvelope后在本机解开正文key。服务端compact_shares只存凭证哈希与双密文，ownerEnvelope支持刷新/换设备恢复同一分享，默认不轮换。增量迁移和旧链接兼容详见docs/SHORT-LINKS.md及ADR-002。

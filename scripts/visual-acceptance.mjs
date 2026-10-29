@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
-import { randomBytes, randomUUID, createCipheriv } from "node:crypto";
+import {
+  randomBytes,
+  randomUUID,
+  createCipheriv,
+  pbkdf2Sync,
+} from "node:crypto";
 import { chromium } from "playwright";
 import AxeBuilder from "@axe-core/playwright";
 
@@ -60,6 +65,25 @@ async function audit(
 ) {
   stage = name;
   await page.evaluate(() => document.fonts.ready);
+  // Mark only capability-bearing values; public space names remain visible.
+  await page.evaluate(() => {
+    for (const el of document.querySelectorAll("[data-acceptance-private]"))
+      el.removeAttribute("data-acceptance-private");
+    for (const el of document.querySelectorAll("input,textarea,code")) {
+      if (
+        el.id === "spaceName" ||
+        /名称/.test(el.getAttribute("aria-label") || "")
+      )
+        continue;
+      const value = "value" in el ? el.value : el.textContent || "";
+      if (
+        /https?:\/\/[^\s]*#|#(?:o|r|k|m|w)=/.test(value) ||
+        /^[A-Za-z0-9_-]{22}(?:[A-Za-z0-9_-]{21})?$/.test(value)
+      ) {
+        el.setAttribute("data-acceptance-private", "true");
+      }
+    }
+  });
   // Capture before asserting, so failures remain reviewable without leaking links.
   await page.screenshot({
     path: join(out, `${name}.png`),
@@ -68,6 +92,7 @@ async function audit(
     mask: [
       page.locator('textarea[aria-label="只读分享链接"]'),
       page.locator(".qr"),
+      page.locator("[data-acceptance-private]"),
     ],
   });
   const result = await page.evaluate(
@@ -261,6 +286,10 @@ try {
     });
     const page = await context.newPage();
     await page.goto(address);
+    const defaultName = await page
+      .getByLabel("空间名称", { exact: true })
+      .inputValue();
+    assert.match(defaultName, /^[a-z0-9]{8}$/, "默认随机名称为8位");
     await page
       .getByRole("button", { name: "创建我的空间", exact: true })
       .click();
@@ -323,7 +352,19 @@ try {
         .evaluate((el) => el === document.activeElement),
       "关闭弹窗恢复触发按钮焦点",
     );
+    await page.evaluate(() => {
+      navigator.clipboard.writeText = async () => {
+        throw new DOMException("synthetic-denied", "NotAllowedError");
+      };
+    });
     await page.getByRole("button", { name: "分享空间", exact: true }).click();
+    await page.getByLabel("只读分享链接", { exact: true }).waitFor();
+    await page.locator(".qr").waitFor();
+    assert.match(
+      await page.locator(".share-status").innerText(),
+      /未允许|手动/,
+      "复制拒绝时给出手动下一步",
+    );
     await audit(page, `${label}-share`, { modal: true });
     await page.getByRole("button", { name: "关闭窗口" }).click();
     await page.getByRole("button", { name: "打开空间", exact: true }).click();
@@ -340,6 +381,125 @@ try {
       });
       await audit(page, "desktop-text-spacing", { editor: true, scale: 2 });
     }
+    await context.close();
+  }
+  // New named-space flow: credentials stay in memory, names remain visible in screenshots.
+  for (const [label, width] of [
+    ["desktop", 1280],
+    ["mobile", 390],
+    ["narrow", 320],
+  ]) {
+    stage = `${label}-named-setup`;
+    const context = await browser.newContext({
+      viewport: { width, height: 900 },
+      reducedMotion: "reduce",
+      permissions: ["clipboard-read", "clipboard-write"],
+    });
+    const page = await context.newPage();
+    const name = `reading-${randomBytes(4).toString("hex")}`;
+    await page.goto(address);
+    await page.getByLabel("空间名称", { exact: true }).fill(name);
+    await page
+      .getByRole("button", { name: "创建我的空间", exact: true })
+      .click();
+    await page.locator('.tiptap[contenteditable="true"]').waitFor();
+    const createdUrl = new URL(page.url());
+    assert.equal(createdUrl.pathname, `/${name}`, "自填名称用于入口");
+    assert.ok(
+      /^#o=[A-Za-z0-9_-]{43}$/.test(createdUrl.hash),
+      "现代管理能力格式正确",
+    );
+    await audit(page, `${label}-named-workspace`, { editor: true });
+    await page.getByRole("button", { name: "分享空间", exact: true }).click();
+    const linkField = page.getByLabel("只读分享链接", { exact: true });
+    await linkField.waitFor();
+    await page.locator(".qr").waitFor();
+    const link = await linkField.inputValue();
+    const parsed = new URL(link);
+    assert.equal(parsed.pathname, `/${name}`, "短分享使用空间名称");
+    assert.ok(/^#r=[A-Za-z0-9_-]{22}$/.test(parsed.hash), "短只读能力为128bit");
+    assert.equal(
+      await page
+        .getByRole("button", { name: "生成只读链接", exact: true })
+        .count(),
+      0,
+      "无需再次生成",
+    );
+    assert.ok(
+      await page
+        .evaluate(() => navigator.clipboard.readText())
+        .then((value) => value === link),
+      "点击分享即复制默认链接",
+    );
+    assert.equal(
+      await page.locator(".share-advanced").getAttribute("open"),
+      null,
+      "默认折叠高级设置",
+    );
+    await audit(page, `${label}-compact-share`, { modal: true });
+    await page.getByText("高级设置", { exact: true }).click();
+    await page.getByRole("button", { name: "更新链接", exact: true }).waitFor();
+    await audit(page, `${label}-share-advanced`, { modal: true });
+    await page
+      .getByRole("button", { name: "撤销只读分享", exact: true })
+      .scrollIntoViewIfNeeded();
+    await audit(page, `${label}-share-advanced-actions`, { modal: true });
+    await page.getByRole("button", { name: "关闭窗口", exact: true }).click();
+    await page.reload();
+    await page.locator('.tiptap[contenteditable="true"]').waitFor();
+    await page.getByRole("button", { name: "分享空间", exact: true }).click();
+    await page.getByLabel("只读分享链接", { exact: true }).waitFor();
+    assert.ok(
+      (await page.getByLabel("只读分享链接", { exact: true }).inputValue()) ===
+        link,
+      "刷新后默认分享仍复用",
+    );
+    const anotherOwner = await context.newPage();
+    await anotherOwner.goto(createdUrl.href);
+    await anotherOwner.locator('.tiptap[contenteditable="true"]').waitFor();
+    await anotherOwner
+      .getByRole("button", { name: "分享空间", exact: true })
+      .click();
+    await anotherOwner.getByLabel("只读分享链接", { exact: true }).waitFor();
+    assert.ok(
+      (await anotherOwner
+        .getByLabel("只读分享链接", { exact: true })
+        .inputValue()) === link,
+      "另一管理页面复用同一分享",
+    );
+    await anotherOwner.close();
+    const locked = await context.newPage();
+    await locked.goto(`${address}/${name}`);
+    await locked.getByLabel("访问码", { exact: true }).waitFor();
+    assert.equal(
+      await locked.locator(".tiptap").count(),
+      0,
+      "裸名称不显示正文",
+    );
+    await audit(locked, `${label}-named-access-code`);
+    await locked
+      .getByLabel("访问码", { exact: true })
+      .fill(parsed.hash.slice(3));
+    await locked
+      .getByRole("button", { name: "打开已有空间", exact: true })
+      .click();
+    await locked.locator('.tiptap[contenteditable="false"]').waitFor();
+    await audit(locked, `${label}-compact-readonly`, { editor: true });
+    const duplicate = await context.newPage();
+    await duplicate.goto(address);
+    await duplicate.getByLabel("空间名称", { exact: true }).fill(name);
+    await duplicate
+      .getByRole("button", { name: "创建我的空间", exact: true })
+      .click();
+    await duplicate
+      .getByRole("button", { name: "打开已有空间", exact: true })
+      .waitFor();
+    assert.equal(
+      await duplicate.locator(".tiptap").count(),
+      0,
+      "重名不能获取编辑权限",
+    );
+    await audit(duplicate, `${label}-name-conflict`);
     await context.close();
   }
   // Real server responses and real encrypted data; only network failures below are mocked.
@@ -399,6 +559,43 @@ try {
     await audit(page, `${label}-conflict`, { editor: true });
     await context.close();
   }
+  stage = "legacy-password-setup";
+  const password = `synthetic-${randomUUID()}`;
+  const salt = randomBytes(16),
+    passwordIv = randomBytes(12);
+  const passwordCipher = createCipheriv(
+    "aes-256-gcm",
+    pbkdf2Sync(password, salt, 600_000, 32, "sha256"),
+    passwordIv,
+  );
+  const wrappedKey = Buffer.concat([
+    passwordCipher.update(key),
+    passwordCipher.final(),
+    passwordCipher.getAuthTag(),
+  ]);
+  const passwordContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    reducedMotion: "reduce",
+  });
+  const passwordPage = await passwordContext.newPage();
+  const passwordParams = new URLSearchParams({
+    r: readerToken,
+    w: wrappedKey.toString("base64url"),
+    s: salt.toString("base64url"),
+    i: passwordIv.toString("base64url"),
+  });
+  await passwordPage.goto(`${address}/s/${space.id}#${passwordParams}`);
+  await passwordPage.getByLabel("解锁密码", { exact: true }).waitFor();
+  await audit(passwordPage, "mobile-legacy-password", { modal: true });
+  await passwordPage.getByLabel("解锁密码", { exact: true }).fill(password);
+  await passwordPage
+    .getByRole("button", { name: "解锁内容", exact: true })
+    .click();
+  await passwordPage.locator('.tiptap[contenteditable="false"]').waitFor();
+  await audit(passwordPage, "mobile-legacy-password-readonly", {
+    editor: true,
+  });
+  await passwordContext.close();
   // A missing space follows the same unavailable/expired UI without waiting 30 minutes.
   const context = await browser.newContext({
     viewport: { width: 390, height: 844 },

@@ -4,6 +4,7 @@ import type {
   SpaceView,
   PageRecord,
   EncryptedPayload,
+  CompactShareResponse,
 } from "@2space/shared";
 import {
   MAX_PAGES,
@@ -14,18 +15,31 @@ import {
   decode,
   decryptDocument,
   encryptDocument,
-  randomSecret,
   wrapKey,
   unwrapKey,
 } from "./crypto.js";
 import { request, RequestError, subscribe } from "./api.js";
 import { sanitizeHtml } from "./sanitize.js";
+import {
+  accessCodeLink,
+  compactLink,
+  createShareDescriptor,
+  deriveOwner,
+  deriveReader,
+  newSeed,
+  parseEntry,
+  randomSpaceName,
+  recoverShareSeed,
+  unwrapReaderKey,
+  validSpaceName,
+} from "./compact.js";
 const Editor = lazy(() => import("./Editor.js"));
 interface Access {
   id: string;
   key: string;
   token: string;
   role: "owner" | "reader";
+  name?: string;
 }
 interface LocalPage {
   record: PageRecord;
@@ -61,6 +75,11 @@ function cleanDocument(doc: PlainDocument) {
 }
 export default function App() {
   const [ready, setReady] = useState(false);
+  const [spaceName, setSpaceName] = useState(randomSpaceName);
+  const [lockedName, setLockedName] = useState("");
+  const [accessCode, setAccessCode] = useState("");
+  const [nameConflict, setNameConflict] = useState(false);
+  const [shareMessage, setShareMessage] = useState("");
   const [access, setAccess] = useState<Access | null>(null),
     [space, setSpace] = useState<SpaceView | null>(null),
     [pages, setPages] = useState<LocalPage[]>([]),
@@ -94,7 +113,7 @@ export default function App() {
     const controls = () =>
       Array.from(
         dialog?.querySelectorAll<HTMLElement>(
-          'button:not(:disabled),input:not(:disabled),textarea,select,a[href],[tabindex="0"]',
+          'button:not(:disabled),input:not(:disabled),textarea,select,summary,a[href],[tabindex="0"]',
         ) || [],
       ).filter((element) => element.getClientRects().length > 0);
     controls()[0]?.focus();
@@ -138,7 +157,8 @@ export default function App() {
     refreshSequence = useRef(0),
     conflictRef = useRef(new Set<string>()),
     deferredRefresh = useRef(false),
-    retries = useRef(new Map<string, number>());
+    retries = useRef(new Map<string, number>()),
+    preparingShare = useRef(false);
   function publish(next: LocalPage[]) {
     pagesRef.current = next;
     setPages(next);
@@ -227,8 +247,8 @@ export default function App() {
       )
         merged[index] = latest;
     }
-    if (a.role !== view.role) {
-      const verified = { ...a, role: view.role };
+    if (a.role !== view.role || a.name !== view.name) {
+      const verified = { ...a, role: view.role, name: view.name };
       accessRef.current = verified;
       setAccess(verified);
     }
@@ -264,36 +284,83 @@ export default function App() {
       else setNotice("暂时无法同步，编辑草稿会保留在本机。");
     }
   }
-  async function enter(a: Access) {
+  async function enter(a: Access, initialView?: SpaceView) {
     setReady(false);
     accessRef.current = a;
     setAccess(a);
     setFatal("");
     setStatus(a.role === "reader" ? "只读访问" : "已加密保存");
-    await refresh(true, a);
+    if (initialView) await decodeSpace(initialView, a, true);
+    else await refresh(true, a);
     setReady(true);
+  }
+  async function initialize() {
+    try {
+      const entry = parseEntry(new URL(location.href));
+      if (entry.kind === "home") return;
+      if (entry.kind === "locked") {
+        setLockedName(entry.name);
+        return;
+      }
+      if (entry.kind === "legacy") {
+        const { params, id } = entry;
+        const token = params.get("m") || params.get("r"),
+          key = params.get("k");
+        if (!token) throw Error("链接不完整，请使用包含访问凭证的完整链接。");
+        if (params.get("w")) {
+          setUnlock(params);
+          return;
+        }
+        if (!key) throw Error("链接缺少解密密钥，请向分享者索取完整链接。");
+        await enter({
+          id,
+          key,
+          token,
+          role: params.has("m") ? "owner" : "reader",
+        });
+        return;
+      }
+      setBusy(true);
+      if (entry.kind === "owner") {
+        const { key, token } = await deriveOwner(entry.seed);
+        const view = await request<SpaceView>(
+          `/spaces/by-name/${entry.name}`,
+          token,
+        );
+        await enter(
+          { id: view.id, key, token, role: view.role, name: entry.name },
+          view,
+        );
+      } else {
+        const { token } = await deriveReader(entry.seed);
+        const view = await request<SpaceView>(
+          `/spaces/by-name/${entry.name}`,
+          token,
+        );
+        if (!view.readerKey)
+          throw Error("只读链接无效，请向分享者索取新链接。");
+        const key = await unwrapReaderKey(view.readerKey, entry.seed);
+        await enter(
+          { id: view.id, key, token, role: view.role, name: entry.name },
+          view,
+        );
+      }
+    } catch (error) {
+      setFatal(
+        error instanceof RequestError && [401, 403, 404].includes(error.status)
+          ? "空间已过期、分享已撤销，或访问码无效。请向分享者索取完整链接。"
+          : error instanceof DOMException
+            ? "无法解密此空间，请核对完整链接。"
+            : message(error),
+      );
+    } finally {
+      setBusy(false);
+    }
   }
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    const params = new URLSearchParams(location.hash.slice(1));
-    const id = location.pathname.match(/^\/s\/([A-Za-z0-9_-]+)$/)?.[1];
-    if (!id) return;
-    const token = params.get("m") || params.get("r"),
-      key = params.get("k");
-    if (!token) {
-      setFatal("链接不完整，请使用包含访问凭证的完整链接。");
-      return;
-    }
-    if (params.get("w")) {
-      setUnlock(params);
-      return;
-    }
-    if (!key) {
-      setFatal("链接缺少解密密钥，请向分享者索取完整链接。");
-      return;
-    }
-    void enter({ id, key, token, role: params.has("m") ? "owner" : "reader" });
+    void initialize();
   }, []);
   useEffect(() => {
     if (!access || !ready) return;
@@ -335,30 +402,56 @@ export default function App() {
   }, [conflicts]);
   async function createSpace() {
     if (busy) return;
+    if (!validSpaceName(spaceName)) {
+      setNotice(
+        "空间名称需3–32位小写字母、数字或中划线，首尾不能是中划线；保留名称不可用。",
+      );
+      return;
+    }
     setBusy(true);
     setFatal("");
+    setNameConflict(false);
     try {
-      const key = randomSecret(),
-        token = randomSecret(),
+      const seed = newSeed("owner"),
+        { key, token } = await deriveOwner(seed),
         pageId = crypto.randomUUID(),
         payload = await encryptDocument(emptyDoc("我的剪贴板"), key);
       const view = await request<SpaceView>("/spaces", undefined, "POST", {
+        name: spaceName,
         ownerToken: token,
         retentionSeconds: 86400,
         page: { id: pageId, payload },
       });
-      const a: Access = { id: view.id, key, token, role: "owner" };
       history.replaceState(
         null,
         "",
-        `/s/${view.id}#${new URLSearchParams({ k: key, m: token })}`,
+        compactLink(location.origin, spaceName, "owner", seed),
       );
-      await enter(a);
-      setNotice("空间已创建。请保存管理链接；清除链接后无法找回。");
-    } catch (e) {
-      setNotice(message(e));
+      await enter(
+        {
+          id: view.id,
+          key,
+          token,
+          role: "owner",
+          name: view.name || spaceName,
+        },
+        view,
+      );
+      setNotice("空间已创建。请保存管理链接；只有名称无法找回内容。");
+    } catch (error) {
+      if (error instanceof RequestError && error.code === "NAME_TAKEN") {
+        setNameConflict(true);
+        setNotice("这个名称已被使用，请换一个名称，或使用访问码打开已有空间。");
+      } else setNotice(message(error));
     } finally {
       setBusy(false);
+    }
+  }
+  function openByCode() {
+    try {
+      location.assign(accessCodeLink(location.origin, lockedName, accessCode));
+    } catch (error) {
+      setNotice(message(error));
     }
   }
   function updatePage(id: string, change: Partial<PlainDocument>) {
@@ -611,23 +704,49 @@ export default function App() {
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
-  async function makeShare() {
-    const a = accessRef.current;
-    if (!a) return;
-    setBusy(true);
+  async function ensureShareName(a: Access): Promise<string> {
+    const remember = (view: SpaceView): string => {
+      if (!view.name) throw Error("空间名称绑定未完成，请重试。");
+      const named = { ...a, name: view.name };
+      accessRef.current = named;
+      setAccess(named);
+      setSpace(view);
+      return view.name;
+    };
+    if (a.name) return a.name;
+    const current = await request<SpaceView>(`/spaces/${a.id}`, a.token);
+    if (current.name) return remember(current);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return remember(
+          await request<SpaceView>(`/spaces/${a.id}`, a.token, "PATCH", {
+            name: randomSpaceName(),
+          }),
+        );
+      } catch (error) {
+        if (error instanceof RequestError && error.code === "NAME_LOCKED")
+          return remember(await request<SpaceView>(`/spaces/${a.id}`, a.token));
+        if (!(error instanceof RequestError) || error.code !== "NAME_TAKEN")
+          throw error;
+      }
+    }
+    throw Error("暂时无法分配空间名称，请重试。");
+  }
+  async function copyShare(link: string) {
     try {
-      const { token } = await request<{ token: string }>(
-        `/spaces/${a.id}/shares`,
-        a.token,
-        "POST",
+      await navigator.clipboard.writeText(link);
+      setShareMessage("只读链接已复制，另一端打开即可查看。");
+    } catch {
+      setShareMessage(
+        "链接已准备好，浏览器未允许自动复制。请点击复制或手动选择下方链接。",
       );
-      const params = new URLSearchParams({ r: token });
-      if (sharePassword) {
-        const wrapped = await wrapKey(a.key, sharePassword);
-        Object.entries(wrapped).forEach(([k, v]) => params.set(k, v));
-      } else params.set("k", a.key);
-      const link = `${location.origin}/s/${a.id}#${params}`;
-      setShareLink(link);
+    }
+  }
+  async function showShareLink(link: string) {
+    setShareLink(link);
+    setQr("");
+    await copyShare(link);
+    try {
       const QRCode = await import("qrcode");
       setQr(
         await QRCode.toDataURL(link, {
@@ -636,10 +755,64 @@ export default function App() {
           errorCorrectionLevel: "M",
         }),
       );
-      setNotice("已生成只读链接，之前的只读链接已失效。");
-    } catch (e) {
-      setNotice(message(e));
+    } catch {
+      setShareMessage("链接已准备好，二维码暂时无法生成；可复制链接继续。");
+    }
+  }
+  async function makeShare(replace = false, passwordLink = false) {
+    const a = accessRef.current;
+    if (!a || a.role !== "owner" || preparingShare.current) return;
+    if (
+      replace &&
+      !confirm("更新链接会使之前所有只读链接失效，包括密码链接。确定继续？")
+    )
+      return;
+    preparingShare.current = true;
+    setBusy(true);
+    setShareMessage("正在准备只读链接…");
+    try {
+      for (const id of dirty.current) await save(id);
+      const deadline = Date.now() + 16_000;
+      while (saving.current.size && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      if (dirty.current.size)
+        throw Error("仍有内容未保存或存在冲突，请先处理，再分享最新内容。");
+      const name = await ensureShareName(a);
+      let descriptor = replace
+        ? null
+        : (
+            await request<CompactShareResponse>(
+              `/spaces/${a.id}/shares`,
+              a.token,
+            )
+          ).share;
+      if (!descriptor) {
+        const candidate = await createShareDescriptor(a.key);
+        const response = await request<CompactShareResponse>(
+          `/spaces/${a.id}/shares`,
+          a.token,
+          "POST",
+          { ...candidate, ...(replace ? { replace: true } : {}) },
+        );
+        descriptor = response.share;
+      }
+      if (!descriptor) throw Error("分享记录未准备好，请重试。");
+      // A concurrent request may have won create-or-get; always recover the server's seed.
+      const seed = await recoverShareSeed(descriptor, a.key);
+      if (passwordLink) {
+        if (!sharePassword) throw Error("请先输入解锁密码。");
+        const { token } = await deriveReader(seed),
+          wrapped = await wrapKey(a.key, sharePassword);
+        await showShareLink(
+          `${location.origin}/s/${a.id}#${new URLSearchParams({ r: token, ...wrapped })}`,
+        );
+      } else
+        await showShareLink(compactLink(location.origin, name, "reader", seed));
+      if (replace) setNotice("只读链接已更新，之前的只读链接已失效。");
+    } catch (error) {
+      setShareMessage(message(error));
     } finally {
+      preparingShare.current = false;
       setBusy(false);
     }
   }
@@ -649,6 +822,7 @@ export default function App() {
       await request(`/spaces/${access.id}/shares`, access.token, "DELETE");
       setShareLink("");
       setQr("");
+      setShareMessage("只读链接已撤销。已经被复制的内容无法收回。");
       setNotice("只读链接已撤销。已经被复制的内容无法收回。");
     } catch (e) {
       setNotice(message(e));
@@ -657,11 +831,7 @@ export default function App() {
   async function openExisting() {
     try {
       const url = new URL(openLink, location.origin);
-      if (
-        url.origin !== location.origin ||
-        !/^\/s\/[A-Za-z0-9_-]+$/.test(url.pathname) ||
-        !url.hash
-      )
+      if (url.origin !== location.origin || parseEntry(url).kind === "home")
         throw Error("请输入本站完整的空间链接。");
       if (dirty.current.size && !confirm("仍有草稿未保存，确定离开当前空间？"))
         return;
@@ -750,6 +920,7 @@ export default function App() {
                 setQr("");
                 setSharePassword("");
                 setModal("share");
+                void makeShare();
               }}
             >
               分享空间
@@ -773,7 +944,9 @@ export default function App() {
       {!access ? (
         <main className="welcome">
           <div className="welcome-copy">
-            <span className="intro-mark">两端之间，留一小块空间</span>
+            <span className="intro-mark">
+              {lockedName ? `打开 ${lockedName}` : "两端之间，留一小块空间"}
+            </span>
             <h1>
               粘贴过来，
               <br />
@@ -784,13 +957,76 @@ export default function App() {
               <br />
               轻量编辑，正文加密，分享由你决定。
             </p>
-            <button
-              className="primary large"
-              onClick={() => void createSpace()}
-              disabled={busy || !!unlock}
-            >
-              {busy ? "正在准备空间…" : "创建我的空间"}
-            </button>
+            {lockedName ? (
+              <form
+                className="space-entry"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  openByCode();
+                }}
+              >
+                <label htmlFor="spaceAccessCode">访问码</label>
+                <input
+                  id="spaceAccessCode"
+                  value={accessCode}
+                  onChange={(event) => setAccessCode(event.target.value)}
+                  placeholder="粘贴访问码或完整空间链接"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <p className="entry-hint">
+                  空间名称是公开的，需访问码才能查看。请向分享者索取。
+                </p>
+                <button
+                  className="primary large"
+                  disabled={busy || !accessCode.trim()}
+                >
+                  打开已有空间
+                </button>
+              </form>
+            ) : (
+              <form
+                className="space-entry"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void createSpace();
+                }}
+              >
+                <label htmlFor="spaceName">空间名称</label>
+                <div className="name-input">
+                  <span aria-hidden="true">2space.cn /</span>
+                  <input
+                    id="spaceName"
+                    value={spaceName}
+                    onChange={(event) => {
+                      setSpaceName(event.target.value);
+                      setNameConflict(false);
+                    }}
+                    minLength={3}
+                    maxLength={32}
+                    autoComplete="off"
+                    spellCheck={false}
+                    aria-describedby="spaceNameHint"
+                    required
+                  />
+                </div>
+                <p id="spaceNameHint" className="entry-hint">
+                  可修改随机名称；3–32位小写字母、数字或中划线。名称公开，请勿填写敏感信息。
+                </p>
+                <button className="primary large" disabled={busy || !!unlock}>
+                  {busy ? "正在准备空间…" : "创建我的空间"}
+                </button>
+                {nameConflict && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => location.assign(`/${spaceName}`)}
+                  >
+                    打开已有空间
+                  </button>
+                )}
+              </form>
+            )}
             <small>无需注册 · 默认保留1天 · 请妥善保存管理链接</small>
           </div>
           <div
@@ -826,7 +1062,7 @@ export default function App() {
         <main className="workspace">
           <aside className="sidebar">
             <div className="sidebar-heading">
-              <h2>我的空间</h2>
+              <h2>{space?.name || "我的空间"}</h2>
               <span>
                 {pages.length}/{MAX_PAGES}
               </span>
@@ -1093,47 +1329,36 @@ export default function App() {
             ) : (
               <>
                 <h2>把空间交给另一端</h2>
-                <p>当前只读分享包含空间里的全部笔记。重新生成后旧链接失效。</p>
-                <label className="field-label">
-                  可选：设置链接解锁密码
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={sharePassword}
-                    onChange={(e) => setSharePassword(e.target.value)}
-                    placeholder="留空则凭链接查看"
-                  />
-                </label>
-                <button
-                  className="primary"
-                  disabled={busy || dirty.current.size > 0}
-                  onClick={() => void makeShare()}
-                >
-                  {busy ? "正在生成…" : "生成只读链接"}
-                </button>
-                {dirty.current.size > 0 && (
-                  <p className="muted">先保存或处理冲突，再分享最新内容。</p>
-                )}
+                <p>
+                  只读分享包含空间里的全部笔记。重复分享复用同一链接，不会让旧链接失效。
+                </p>
+                <div className="share-status" role="status">
+                  {shareMessage || "正在准备只读链接…"}
+                </div>
                 {shareLink && (
                   <>
                     <textarea
                       aria-label="只读分享链接"
                       readOnly
                       value={shareLink}
+                      onFocus={(event) => event.currentTarget.select()}
                     />
                     {qr && <img className="qr" src={qr} alt="只读空间二维码" />}
                     <button
                       className="secondary"
-                      onClick={() =>
-                        void navigator.clipboard
-                          .writeText(shareLink)
-                          .then(() => setNotice("只读链接已复制"))
-                          .catch(() => setNotice("请手动复制上方链接"))
-                      }
+                      onClick={() => void copyShare(shareLink)}
                     >
                       复制只读链接
                     </button>
                   </>
+                )}
+                {!busy && !shareLink && (
+                  <button
+                    className="secondary"
+                    onClick={() => void makeShare()}
+                  >
+                    重试准备分享
+                  </button>
                 )}
                 <div className="share-bottom">
                   <button
@@ -1142,23 +1367,60 @@ export default function App() {
                       void navigator.clipboard
                         .writeText(location.href)
                         .then(() =>
-                          setNotice("管理链接已复制，请仅交给信任的设备。"),
+                          setShareMessage(
+                            "管理链接已复制，可修改内容，请仅交给信任的设备。",
+                          ),
                         )
-                        .catch(() => setNotice("请从地址栏复制管理链接。"))
+                        .catch(() =>
+                          setShareMessage("请从地址栏复制管理链接。"),
+                        )
                     }
                   >
                     复制本机管理链接
                   </button>
-                  <button
-                    className="text-button danger"
-                    onClick={() => void revoke()}
-                  >
-                    撤销只读分享
-                  </button>
                 </div>
-                <small>
-                  密码用于包装此链接的解密密钥，不会更改已发出的其他链接。
-                </small>
+                <details className="share-advanced">
+                  <summary>高级设置</summary>
+                  <p>
+                    密码链接是可选的额外保护，链接会更长；生成密码链接不会停用现有短链接。
+                  </p>
+                  <label className="field-label">
+                    链接解锁密码
+                    <input
+                      type="password"
+                      autoComplete="new-password"
+                      value={sharePassword}
+                      onChange={(event) => setSharePassword(event.target.value)}
+                      placeholder="输入额外解锁密码"
+                    />
+                  </label>
+                  <button
+                    className="secondary"
+                    disabled={busy || !sharePassword}
+                    onClick={() => void makeShare(false, true)}
+                  >
+                    生成密码链接
+                  </button>
+                  <div className="share-bottom">
+                    <button
+                      className="text-button"
+                      disabled={busy}
+                      onClick={() => void makeShare(true)}
+                    >
+                      更新链接
+                    </button>
+                    <button
+                      className="text-button danger"
+                      disabled={busy}
+                      onClick={() => void revoke()}
+                    >
+                      撤销只读分享
+                    </button>
+                  </div>
+                  <p className="risk-note">
+                    更新或撤销会使旧只读链接失效；已经复制的内容无法收回。
+                  </p>
+                </details>
               </>
             )}
           </section>

@@ -17,6 +17,8 @@ export interface PageRecord {
 }
 export interface SpaceView {
   id: string;
+  name?: string;
+  readerKey?: EncryptedPayload;
   revision: number;
   pages: PageRecord[];
   createdAt: string;
@@ -26,6 +28,7 @@ export interface SpaceView {
   role: "owner" | "reader";
 }
 export interface CreateSpaceRequest {
+  name?: string;
   ownerToken: string;
   retentionSeconds: number;
   page: { id: string; payload: EncryptedPayload };
@@ -58,3 +61,28 @@ export interface ApiError {
 // DELETE /api/spaces/:id -> 204 (owner only, no undo).
 // Errors {error:{code,message}}, 401 auth, 404 missing/expired, 409 version conflict,
 // 422 invalid input, 413 too large, 429 rate limit. No plaintext in errors/logs.
+
+/** Compact v2 links are additive; v1 /s/:uuid#k=...&m/r=... stays valid. */
+export const SPACE_NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])$/;
+export const RESERVED_SPACE_NAMES = [
+  "api",
+  "assets",
+  "s",
+  "privacy",
+  "share",
+  "health",
+  "robots",
+  "favicon",
+  "index",
+] as const;
+export interface CompactShareRecord {
+  keyEnvelope: EncryptedPayload;
+  ownerEnvelope: EncryptedPayload;
+}
+export interface CompactShareRequest extends CompactShareRecord {
+  token: string;
+  replace?: boolean;
+}
+export interface CompactShareResponse {
+  share: CompactShareRecord | null;
+}
