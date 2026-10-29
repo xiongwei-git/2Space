@@ -1,6 +1,7 @@
 # ADR-002：可记忆空间名称与一步短分享
 
-Status: Accepted  
+Status: Accepted
+
 Date: 2026-10-29
 
 ## 背景
