@@ -120,3 +120,7 @@ T10/T11/T12已交付并停写。统一BrandMark恢复f8962f5双格几何，Home/
 ## 当前迭代：浏览器密码保护（本地交付）
 
 用户授权采纳建议：普通空间保留名称访问，设置新密码时浏览器加密，去掉服务方读取FAQ，准确强调HTTPS/加密存储。ADR-006冻结协议。backend owns server/tests、crypto owns password-protection helper/tests、acceptance owns Home/styles/visual及新保护验收，root owns App/shared/其他文档/配置/集成。新保护不上传原密码或正文key，服务器public_key=NULL，使用proof验证与全页CAS+keyRevision；旧门禁通过重新设置新密码升级，不强制修改现有数据。root已实现丢响应二次确认与旧密码草稿恢复。最终61单元/集成、旧76阅读、46链接、78parity、新75浏览器保护检查通过，typecheck/格式/静态门禁通过。已处理丢响应确认、跨设备改密/取消、旧密码草稿本地恢复、另一tab晚写稿不盲删、旧异步加密不覆盖新代际。当前分支feat/browser-password-protection。Docker已更新且健康，23基础smoke+8实际容器新保护检查通过；更新前快照和旧镜像before-browser-password-1793267608可用，原25/30/2业务列摘要一致，新列默认正确，无用户正文/密码强制转换。root看图与3210页面检查完成，独立演示privacy-tdd8oi可由用户自行设密码。旧密码空间需通过新版重新设置新密码升级；独立审计/实体设备/其他浏览器/HTTPS公网仍未验收。
+
+### 开发镜像清理与最新保留规则
+
+用户指出开发阶段不需要保留历史镜像。已删除10个无容器引用的2space:before-*标签；2space:local及当前开发镜像保留，数据卷、备份、其他项目未动，容器未重启且health ok。后续不再逐轮创建/积累历史镜像，按Git提交重建回退；数据备份单独处理。当前规则已写AGENTS/OPERATIONS，覆盖旧验收文档的镜像保留惯例。
