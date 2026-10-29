@@ -6,15 +6,20 @@ import {
   randomBytes,
   randomUUID,
   timingSafeEqual,
+  scryptSync,
 } from "node:crypto";
 import { mkdirSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ServerResponse } from "node:http";
 
-const RETENTION = [1800, 3600, 21600, 86400, 259200, 604800, 2592000];
+const RETENTION = [
+  0, 1800, 3600, 21600, 86400, 259200, 604800, 2592000, 7776000, 15552000,
+  31536000, 63072000, 94608000,
+];
+const PERMANENT = "9999-12-31T23:59:59.999Z";
 const MAX_BYTES = 400_000;
-const NAME_PATTERN = /^[a-z0-9](?:[a-z0-9-]{1,30}[a-z0-9])$/;
+const NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
 const RESERVED_NAMES = new Set([
   "api",
   "assets",
@@ -29,14 +34,14 @@ const RESERVED_NAMES = new Set([
 const nameValid = (name: unknown): name is string =>
   typeof name === "string" &&
   NAME_PATTERN.test(name) &&
-  !RESERVED_NAMES.has(name);
+  !RESERVED_NAMES.has(name.toLowerCase());
 const validName = (name: unknown): string =>
   nameValid(name)
     ? name
     : fail(
         422,
         "INVALID_NAME",
-        "名称需为3–32位小写字母、数字或中划线，且不能使用保留名称",
+        "名称需为1–64位字母、数字、下划线或中划线，且不能使用保留名称",
       );
 type CompactRow = {
   space_id: string;
@@ -54,6 +59,13 @@ type Envelope = { iv: string; ciphertext: string };
 type Row = {
   id: string;
   name: string | null;
+  access_mode: "public" | "private";
+  public_key: string | null;
+  password_hash: string | null;
+  password_salt: string | null;
+  view_count: number;
+  last_viewed_at: string | null;
+  main_page_id: string | null;
   owner_hash: string;
   reader_hash: string | null;
   revision: number;
@@ -71,7 +83,13 @@ type PageRow = {
   updated_at: string;
 };
 type Role = "owner" | "reader";
-type Stream = { response: ServerResponse; role: Role; tokenHash: string };
+type Stream = {
+  response: ServerResponse;
+  role: Role;
+  tokenHash: string;
+  sessionHash?: string;
+};
+type PasswordSession = { spaceId: string; tokenHash: string; expires: number };
 export interface AppOptions {
   dbPath?: string;
   now?: () => number;
@@ -85,6 +103,7 @@ class ApiFailure extends Error {
     public code: string,
     message: string,
     public currentRevision?: number,
+    public spaceId?: string,
   ) {
     super(message);
   }
@@ -94,8 +113,9 @@ const fail = (
   code: string,
   message: string,
   currentRevision?: number,
+  spaceId?: string,
 ): never => {
-  throw new ApiFailure(status, code, message, currentRevision);
+  throw new ApiFailure(status, code, message, currentRevision, spaceId);
 };
 const object = (value: unknown, fields: string[]): Record<string, unknown> => {
   if (!value || typeof value !== "object" || Array.isArray(value))
@@ -127,16 +147,16 @@ function envelope(value: unknown): Envelope {
   const v = object(value, ["iv", "ciphertext"]);
   const decode = (s: unknown) => {
     if (typeof s !== "string" || !/^[A-Za-z0-9_-]+$/.test(s))
-      return fail(422, "INVALID_PAYLOAD", "加密内容格式无效");
+      return fail(422, "INVALID_PAYLOAD", "内容格式无效");
     const bytes = Buffer.from(s, "base64url");
     if (bytes.toString("base64url") !== s)
-      return fail(422, "INVALID_PAYLOAD", "加密内容格式无效");
+      return fail(422, "INVALID_PAYLOAD", "内容格式无效");
     return bytes;
   };
   const iv = decode(v.iv),
     body = decode(v.ciphertext);
   if (iv.length !== 12 || body.length < 16)
-    fail(422, "INVALID_PAYLOAD", "加密内容格式无效");
+    fail(422, "INVALID_PAYLOAD", "内容格式无效");
   if (body.length > MAX_BYTES)
     fail(413, "PAYLOAD_TOO_LARGE", "内容超出大小限制");
   return { iv: v.iv as string, ciphertext: v.ciphertext as string };
@@ -177,6 +197,21 @@ export async function buildApp(options: AppOptions = {}) {
     }[];
     if (!columns.some((column) => column.name === "name"))
       db.exec("ALTER TABLE spaces ADD COLUMN name TEXT");
+    const additions: Record<string, string> = {
+      access_mode: "TEXT NOT NULL DEFAULT 'private'",
+      public_key: "TEXT",
+      password_hash: "TEXT",
+      password_salt: "TEXT",
+      view_count: "INTEGER NOT NULL DEFAULT 0",
+      last_viewed_at: "TEXT",
+      main_page_id: "TEXT",
+    };
+    for (const [name, definition] of Object.entries(additions))
+      if (!columns.some((column) => column.name === name))
+        db.exec(`ALTER TABLE spaces ADD COLUMN ${name} ${definition}`);
+    db.exec(
+      "UPDATE spaces SET main_page_id=(SELECT id FROM pages WHERE space_id=spaces.id ORDER BY position LIMIT 1) WHERE main_page_id IS NULL",
+    );
     db.exec(
       "CREATE UNIQUE INDEX IF NOT EXISTS spaces_name ON spaces(name) WHERE name IS NOT NULL; CREATE TABLE IF NOT EXISTS compact_shares(space_id TEXT PRIMARY KEY REFERENCES spaces(id) ON DELETE CASCADE,token_hash TEXT NOT NULL,key_iv TEXT NOT NULL,key_ciphertext TEXT NOT NULL,owner_iv TEXT NOT NULL,owner_ciphertext TEXT NOT NULL);",
     );
@@ -190,6 +225,67 @@ export async function buildApp(options: AppOptions = {}) {
   const streams = new Map<string, Set<Stream>>();
   const rates = new Map<string, { count: number; start: number }>();
   const createRates = new Map<string, { count: number; start: number }>();
+  const passwordRates = new Map<string, { count: number; start: number }>();
+  const sessions = new Map<string, PasswordSession>();
+  const expiry = (seconds: number, base = now()) =>
+    seconds === 0 ? PERMANENT : new Date(base + seconds * 1000).toISOString();
+  const cookieName = (spaceId: string) =>
+    `2space_session_${spaceId.replace(/-/g, "")}`;
+  function sessionHash(req: FastifyRequest, spaceId: string) {
+    const name = cookieName(spaceId);
+    const value = req.headers.cookie
+      ?.split(";")
+      .map((part) => part.trim())
+      .find((part) => part.startsWith(name + "="))
+      ?.slice(name.length + 1);
+    return value && tokenValid(value) ? hash(value) : undefined;
+  }
+  function validSession(req: FastifyRequest, row: Row, tokenHash: string) {
+    const digest = sessionHash(req, row.id),
+      session = digest ? sessions.get(digest) : undefined;
+    return (
+      !!session &&
+      session.spaceId === row.id &&
+      session.expires > now() &&
+      (row.access_mode === "public" || sameHash(tokenHash, session.tokenHash))
+    );
+  }
+  function clearSessions(spaceId: string) {
+    for (const [digest, session] of sessions)
+      if (session.spaceId === spaceId) sessions.delete(digest);
+  }
+  function setSession(
+    req: FastifyRequest,
+    reply: import("fastify").FastifyReply,
+    row: Row,
+    tokenHash: string,
+  ) {
+    const secret = randomBytes(32).toString("base64url"),
+      digest = hash(secret);
+    sessions.set(digest, {
+      spaceId: row.id,
+      tokenHash,
+      expires: now() + 1800_000,
+    });
+    reply.header(
+      "Set-Cookie",
+      `${cookieName(row.id)}=${secret}; Path=/api/spaces; HttpOnly; SameSite=Strict; Max-Age=1800${process.env.COOKIE_SECURE === "true" ? "; Secure" : ""}`,
+    );
+  }
+  function passwordValue(body: unknown) {
+    const value = object(body, ["password"]).password;
+    if (typeof value !== "string" || Buffer.byteLength(value, "utf8") > 1024)
+      return fail(422, "INVALID_PASSWORD", "密码格式无效");
+    return value;
+  }
+  function derivePassword(password: string, salt: string) {
+    return scryptSync(password, Buffer.from(salt, "base64url"), 64, {
+      N: 32768,
+      r: 8,
+      p: 1,
+      maxmem: 64 * 1024 * 1024,
+    }).toString("hex");
+  }
   const iso = () => new Date(now()).toISOString();
   const getRow = (id: string) =>
     db.prepare("SELECT * FROM spaces WHERE id=?").get(id) as Row | undefined;
@@ -211,12 +307,14 @@ export async function buildApp(options: AppOptions = {}) {
   }
   function destroySpace(id: string) {
     closeStreams(id);
+    clearSessions(id);
     db.prepare("DELETE FROM spaces WHERE id=?").run(id);
   }
   function authenticate(
     req: FastifyRequest,
     ownerOnly = false,
     resolvedId?: string,
+    skipPassword = false,
   ): { space: Row; role: Role; tokenHash: string } {
     const id = resolvedId ?? (req.params as { id: string }).id;
     validId(id);
@@ -225,6 +323,11 @@ export async function buildApp(options: AppOptions = {}) {
     if (Date.parse(row.expires_at) <= now()) {
       destroySpace(id);
       return fail(404, "NOT_FOUND", "空间不存在或已过期");
+    }
+    if (row.access_mode === "public") {
+      if (!skipPassword && row.password_hash && !validSession(req, row, ""))
+        fail(401, "PASSWORD_REQUIRED", "请输入空间密码", undefined, row.id);
+      return { space: row, role: "owner", tokenHash: "" };
     }
     const bearer = req.headers.authorization?.match(
       /^Bearer ([A-Za-z0-9_-]{43})$/,
@@ -240,14 +343,22 @@ export async function buildApp(options: AppOptions = {}) {
         : fail(401, "UNAUTHORIZED", "访问链接已失效");
     if (ownerOnly && role !== "owner")
       return fail(403, "READ_ONLY", "此链接仅允许查看");
+    if (!skipPassword && row.password_hash && !validSession(req, row, digest))
+      fail(401, "PASSWORD_REQUIRED", "请输入空间密码", undefined, row.id);
     return { space: row, role, tokenHash: digest };
   }
-  function view(row: Row, role: Role, tokenHash?: string) {
+  function view(row: Row, role: Role, tokenHash?: string, viewerIp?: string) {
     const pages = db
       .prepare("SELECT * FROM pages WHERE space_id=? ORDER BY position")
       .all(row.id) as PageRow[];
     return {
       id: row.id,
+      accessMode: row.access_mode,
+      ...(row.access_mode === "public" ? { publicKey: row.public_key } : {}),
+      passwordProtected: !!row.password_hash,
+      viewCount: row.view_count,
+      lastViewedAt: row.last_viewed_at,
+      ...(viewerIp ? { viewerIp } : {}),
       ...(row.name ? { name: row.name } : {}),
       ...(role === "reader" &&
       tokenHash &&
@@ -258,7 +369,7 @@ export async function buildApp(options: AppOptions = {}) {
       pages: pages.map(pageView),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-      expiresAt: row.expires_at,
+      expiresAt: row.retention_seconds === 0 ? null : row.expires_at,
       retentionSeconds: row.retention_seconds,
       role,
     };
@@ -277,11 +388,7 @@ export async function buildApp(options: AppOptions = {}) {
     const row = getRow(id)!;
     db.prepare(
       "UPDATE spaces SET revision=revision+1,updated_at=?,expires_at=? WHERE id=?",
-    ).run(
-      iso(),
-      new Date(now() + row.retention_seconds * 1000).toISOString(),
-      id,
-    );
+    ).run(iso(), expiry(row.retention_seconds), id);
   }
   function notify(id: string) {
     const row = getRow(id);
@@ -327,6 +434,7 @@ export async function buildApp(options: AppOptions = {}) {
         ...(error.currentRevision
           ? { currentRevision: error.currentRevision }
           : {}),
+        ...(error.spaceId ? { spaceId: error.spaceId } : {}),
       });
       return;
     }
@@ -371,25 +479,40 @@ export async function buildApp(options: AppOptions = {}) {
       "retentionSeconds",
       "page",
       "name",
+      "accessMode",
+      "publicKey",
     ]);
     if (!tokenValid(body.ownerToken))
-      fail(422, "INVALID_TOKEN", "管理凭证格式无效");
+      fail(422, "INVALID_TOKEN", "可编辑链接不完整");
     const name = body.name === undefined ? null : validName(body.name);
+    if (
+      body.accessMode !== undefined &&
+      body.accessMode !== "public" &&
+      body.accessMode !== "private"
+    )
+      fail(422, "INVALID_INPUT", "空间类型无效");
+    const mode = body.accessMode === "public" ? "public" : "private";
+    if (mode === "public" && (!name || !tokenValid(body.publicKey)))
+      fail(422, "INVALID_INPUT", "名称或内容设置无效");
+    if (mode === "private" && body.publicKey !== undefined)
+      fail(422, "INVALID_INPUT", "此空间不接受公开内容设置");
     const seconds =
       body.retentionSeconds === undefined
-        ? 86400
+        ? mode === "public"
+          ? 0
+          : 86400
         : retention(body.retentionSeconds);
     const p = object(body.page, ["id", "payload"]);
     const pid = validId(p.id),
       encrypted = envelope(p.payload);
     const id = randomUUID(),
       time = iso(),
-      expires = new Date(now() + seconds * 1000).toISOString();
+      expires = expiry(seconds);
     db.exec("BEGIN IMMEDIATE");
     try {
       if (name) assertNameAvailable(name);
       db.prepare(
-        "INSERT INTO spaces(id,name,owner_hash,revision,created_at,updated_at,expires_at,retention_seconds) VALUES(?,?,?,1,?,?,?,?)",
+        "INSERT INTO spaces(id,name,owner_hash,revision,created_at,updated_at,expires_at,retention_seconds,access_mode,public_key,main_page_id) VALUES(?,?,?,1,?,?,?,?,?,?,?)",
       ).run(
         id,
         name,
@@ -398,6 +521,9 @@ export async function buildApp(options: AppOptions = {}) {
         time,
         expires,
         seconds,
+        mode,
+        mode === "public" ? (body.publicKey as string) : null,
+        pid,
       );
       db.prepare(
         "INSERT INTO pages(id,space_id,revision,iv,ciphertext,updated_at,position) VALUES(?,?,1,?,?,?,0)",
@@ -415,11 +541,11 @@ export async function buildApp(options: AppOptions = {}) {
       { id: string } | undefined;
     if (!row) return fail(404, "NOT_FOUND", "空间不存在或已过期");
     const a = authenticate(req, false, row.id);
-    return view(a.space, a.role, a.tokenHash);
+    return view(a.space, a.role, a.tokenHash, req.ip);
   });
   app.get("/api/spaces/:id", async (req) => {
     const a = authenticate(req);
-    return view(a.space, a.role, a.tokenHash);
+    return view(a.space, a.role, a.tokenHash, req.ip);
   });
   app.post("/api/spaces/:id/pages", async (req, reply) => {
     const a = authenticate(req, true),
@@ -510,6 +636,8 @@ export async function buildApp(options: AppOptions = {}) {
     if (!old) return reply.code(204).send();
     if (old.revision !== expected)
       fail(409, "REVISION_CONFLICT", "笔记已更新", old.revision);
+    if (pid === a.space.main_page_id)
+      fail(409, "MAIN_PAGE", "主剪贴板不能删除");
     const count = db
       .prepare("SELECT count(*) AS n FROM pages WHERE space_id=?")
       .get(a.space.id) as { n: number };
@@ -526,6 +654,100 @@ export async function buildApp(options: AppOptions = {}) {
       throw e;
     }
     notify(a.space.id);
+    return reply.code(204).send();
+  });
+  app.post("/api/spaces/:id/visits", async (req) => {
+    const a = authenticate(req);
+    object(req.body ?? {}, []);
+    db.prepare(
+      "UPDATE spaces SET view_count=view_count+1,last_viewed_at=? WHERE id=?",
+    ).run(iso(), a.space.id);
+    return view(getRow(a.space.id)!, a.role, a.tokenHash, req.ip);
+  });
+  app.post("/api/spaces/:id/pages/order", async (req) => {
+    const a = authenticate(req, true),
+      body = object(req.body, ["ids"]);
+    if (
+      !Array.isArray(body.ids) ||
+      !body.ids.every((id) => typeof id === "string")
+    )
+      fail(422, "INVALID_ORDER", "请提供完整笔记顺序");
+    const ids = body.ids as string[],
+      rows = db
+        .prepare("SELECT id FROM pages WHERE space_id=?")
+        .all(a.space.id) as { id: string }[];
+    if (
+      ids.length !== rows.length ||
+      new Set(ids).size !== rows.length ||
+      ids[0] !== a.space.main_page_id ||
+      !ids.every((id) => rows.some((row) => row.id === id))
+    )
+      fail(422, "INVALID_ORDER", "主剪贴板需固定在第一位，且包含全部笔记");
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      ids.forEach((id, index) =>
+        db
+          .prepare("UPDATE pages SET position=? WHERE space_id=? AND id=?")
+          .run(index, a.space.id, id),
+      );
+      db.prepare("UPDATE spaces SET revision=revision+1 WHERE id=?").run(
+        a.space.id,
+      );
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+    notify(a.space.id);
+    return view(getRow(a.space.id)!, a.role, a.tokenHash, req.ip);
+  });
+  app.post("/api/spaces/:id/password", async (req, reply) => {
+    const a = authenticate(req, true),
+      password = passwordValue(req.body);
+    limit(passwordRates, `${req.ip}:${a.space.id}:password`, 15, 900_000);
+    const salt = password ? randomBytes(16).toString("base64url") : null;
+    const digest = password && salt ? derivePassword(password, salt) : null;
+    db.prepare(
+      "UPDATE spaces SET password_hash=?,password_salt=?,revision=revision+1 WHERE id=?",
+    ).run(digest, salt, a.space.id);
+    clearSessions(a.space.id);
+    closeStreams(a.space.id);
+    const row = getRow(a.space.id)!;
+    setSession(req, reply, row, a.tokenHash);
+    notify(a.space.id);
+    return view(row, a.role, a.tokenHash, req.ip);
+  });
+  app.post("/api/spaces/:id/unlock", async (req, reply) => {
+    const a = authenticate(req, false, undefined, true),
+      password = passwordValue(req.body);
+    limit(passwordRates, `${req.ip}:${a.space.id}:unlock`, 20, 900_000);
+    if (
+      a.space.password_hash &&
+      (!a.space.password_salt ||
+        !sameHash(
+          derivePassword(password, a.space.password_salt),
+          a.space.password_hash,
+        ))
+    )
+      fail(403, "PASSWORD_INCORRECT", "密码不正确，请重试");
+    setSession(req, reply, a.space, a.tokenHash);
+    return reply.code(204).send();
+  });
+  app.post("/api/spaces/:id/lock", async (req, reply) => {
+    const id = validId((req.params as { id: string }).id),
+      digest = sessionHash(req, id);
+    if (digest) {
+      sessions.delete(digest);
+      for (const stream of streams.get(id) ?? [])
+        if (stream.sessionHash === digest) {
+          stream.response.end();
+          streams.get(id)?.delete(stream);
+        }
+    }
+    reply.header(
+      "Set-Cookie",
+      `${cookieName(id)}=; Path=/api/spaces; HttpOnly; SameSite=Strict; Max-Age=0${process.env.COOKIE_SECURE === "true" ? "; Secure" : ""}`,
+    );
     return reply.code(204).send();
   });
   app.patch("/api/spaces/:id", async (req) => {
@@ -550,11 +772,10 @@ export async function buildApp(options: AppOptions = {}) {
       }
       if (seconds !== undefined)
         db.prepare(
-          "UPDATE spaces SET retention_seconds=?,revision=revision+1,updated_at=?,expires_at=? WHERE id=?",
+          "UPDATE spaces SET retention_seconds=?,revision=revision+1,expires_at=? WHERE id=?",
         ).run(
           seconds,
-          iso(),
-          new Date(now() + seconds * 1000).toISOString(),
+          expiry(seconds, Date.parse(a.space.updated_at)),
           a.space.id,
         );
       db.exec("COMMIT");
@@ -592,7 +813,7 @@ export async function buildApp(options: AppOptions = {}) {
       notify(a.space.id);
       return reply.code(201).send({ token });
     }
-    if (!tokenValid(body.token)) fail(422, "INVALID_TOKEN", "分享凭证格式无效");
+    if (!tokenValid(body.token)) fail(422, "INVALID_TOKEN", "仅查看链接不完整");
     if (body.replace !== undefined && typeof body.replace !== "boolean")
       fail(422, "INVALID_INPUT", "更新选项无效");
     const key = envelope(body.keyEnvelope),
@@ -681,6 +902,7 @@ export async function buildApp(options: AppOptions = {}) {
       response: reply.raw,
       role: a.role,
       tokenHash: a.tokenHash,
+      sessionHash: sessionHash(req, a.space.id),
     };
     existing.add(stream);
     streams.set(a.space.id, existing);
@@ -689,6 +911,7 @@ export async function buildApp(options: AppOptions = {}) {
       if (
         !row ||
         Date.parse(row.expires_at) <= now() ||
+        (row.password_hash && !validSession(req, row, stream.tokenHash)) ||
         (stream.role === "reader" &&
           !sameHash(stream.tokenHash, row.reader_hash) &&
           !sameHash(stream.tokenHash, getCompact(a.space.id)?.token_hash))
@@ -751,6 +974,10 @@ export async function buildApp(options: AppOptions = {}) {
       if (now() - r.start > 60_000) rates.delete(key);
     for (const [key, r] of createRates)
       if (now() - r.start > 3600_000) createRates.delete(key);
+    for (const [key, r] of passwordRates)
+      if (now() - r.start > 900_000) passwordRates.delete(key);
+    for (const [key, session] of sessions)
+      if (session.expires <= now()) sessions.delete(key);
   };
   const interval =
     options.cleanupIntervalMs === 0
@@ -763,6 +990,7 @@ export async function buildApp(options: AppOptions = {}) {
   app.addHook("onClose", async () => {
     if (interval) clearInterval(interval);
     for (const id of streams.keys()) closeStreams(id);
+    sessions.clear();
     db.close();
   });
   return app;

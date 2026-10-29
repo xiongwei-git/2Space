@@ -1,5 +1,9 @@
 // API error codes are stable; user-facing explanations do not expose server diagnostics.
 const messages: Record<string, string> = {
+  PASSWORD_REQUIRED: "请输入空间密码后继续。",
+  PASSWORD_INCORRECT: "密码不正确，请重试。",
+  MAIN_PAGE: "主剪贴板不能删除。",
+  INVALID_ORDER: "记事本顺序未保存，请重试。",
   INVALID_INPUT: "提交的信息不完整，请检查后重试。",
   INVALID_ID: "链接不完整，请重新复制后打开。",
   INVALID_TOKEN: "链接不完整，请重新复制后打开。",

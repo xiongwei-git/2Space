@@ -120,3 +120,38 @@ test("未知服务端错误不向用户展示维护信息", async () => {
     fetchMock.mock.restore();
   }
 });
+
+test("密码挑战只保留spaceId用于输入密码，不暴露服务端诊断；公开请求不发送Bearer", async () => {
+  const fetchMock = mock.method(
+    globalThis,
+    "fetch",
+    async (_url: unknown, init?: RequestInit) => {
+      assert.equal(
+        (init?.headers as Record<string, string>).Authorization,
+        undefined,
+      );
+      return new Response(
+        JSON.stringify({
+          error: {
+            code: "PASSWORD_REQUIRED",
+            message: "server hash private diagnostic",
+          },
+          spaceId: "challenge-id",
+        }),
+        { status: 401, headers: { "Content-Type": "application/json" } },
+      );
+    },
+  );
+  try {
+    await assert.rejects(
+      request("/spaces/by-name/public-space"),
+      (error) =>
+        error instanceof RequestError &&
+        error.code === "PASSWORD_REQUIRED" &&
+        error.spaceId === "challenge-id" &&
+        error.message === "请输入空间密码后继续。",
+    );
+  } finally {
+    fetchMock.mock.restore();
+  }
+});

@@ -127,7 +127,7 @@ try {
   });
   assert.equal(duplicate.error.code, "NAME_TAKEN");
   checks++;
-  for (const invalid of ["api", "ab", "Bad_Name"])
+  for (const invalid of ["api", "API", "", "bad!name"])
     await request("/api/spaces", {
       method: "POST",
       body: {

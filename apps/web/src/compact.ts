@@ -6,7 +6,7 @@ export function validSpaceName(name: string): boolean {
   return (
     SPACE_NAME_PATTERN.test(name) &&
     !RESERVED_SPACE_NAMES.includes(
-      name as (typeof RESERVED_SPACE_NAMES)[number],
+      name.toLowerCase() as (typeof RESERVED_SPACE_NAMES)[number],
     )
   );
 }

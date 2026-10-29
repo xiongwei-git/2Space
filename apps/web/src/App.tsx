@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   PlainDocument,
   SpaceView,
@@ -17,6 +17,7 @@ import {
   encryptDocument,
   wrapKey,
   unwrapKey,
+  randomSecret,
 } from "./crypto.js";
 import { request, RequestError, subscribe } from "./api.js";
 import { sanitizeHtml } from "./sanitize.js";
@@ -33,13 +34,21 @@ import {
   unwrapReaderKey,
   validSpaceName,
 } from "./compact.js";
-const Editor = lazy(() => import("./Editor.js"));
+import Home from "./Home.js";
+import Workspace from "./Workspace.js";
+import {
+  randomExperienceName,
+  RETENTION_LABELS,
+  pageLabel,
+} from "./view-model.js";
 interface Access {
   id: string;
   key: string;
   token: string;
   role: "owner" | "reader";
   name?: string;
+  isPublic?: boolean;
+  viewOnly?: boolean;
 }
 interface LocalPage {
   record: PageRecord;
@@ -49,21 +58,12 @@ interface Draft {
   baseRevision: number;
   payload: EncryptedPayload;
 }
-const emptyDoc = (title = "未命名笔记"): PlainDocument => ({
+const emptyDoc = (title = ""): PlainDocument => ({
   title,
   html: "<p></p>",
   text: "",
   language: "plaintext",
 });
-const retentionNames = [
-  "30分钟",
-  "1小时",
-  "6小时",
-  "1天",
-  "3天",
-  "1周",
-  "1个月",
-];
 function message(error: unknown) {
   return error instanceof Error && /\p{Script=Han}/u.test(error.message)
     ? error.message
@@ -77,7 +77,20 @@ function cleanDocument(doc: PlainDocument) {
 }
 export default function App() {
   const [ready, setReady] = useState(false);
-  const [spaceName, setSpaceName] = useState(randomSpaceName);
+  const [challenge, setChallenge] = useState<{
+    id: string;
+    token: string;
+  } | null>(null);
+  const [spacePassword, setSpacePassword] = useState("");
+  const [lockMessage, setLockMessage] = useState("");
+  const preparedReadLink = useRef("");
+  const [retentionDraft, setRetentionDraft] = useState(0);
+  const [renameId, setRenameId] = useState("");
+  const [pendingPageId, setPendingPageId] = useState("");
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const visited = useRef(new Set<string>());
+  const suspendedAccess = useRef<Access | null>(null);
+  const [spaceName, setSpaceName] = useState("");
   const [lockedName, setLockedName] = useState("");
   const [accessCode, setAccessCode] = useState("");
   const [nameConflict, setNameConflict] = useState(false);
@@ -91,7 +104,16 @@ export default function App() {
     [status, setStatus] = useState("尚未创建空间"),
     [online, setOnline] = useState(false),
     [fatal, setFatal] = useState(""),
-    [modal, setModal] = useState<"share" | "privacy" | "open" | null>(null),
+    [modal, setModal] = useState<
+      | "share"
+      | "privacy"
+      | "open"
+      | "password"
+      | "retention"
+      | "support"
+      | "deletePage"
+      | null
+    >(null),
     [shareLink, setShareLink] = useState(""),
     [sharePassword, setSharePassword] = useState(""),
     [qr, setQr] = useState(""),
@@ -100,7 +122,7 @@ export default function App() {
     [unlockPassword, setUnlockPassword] = useState(""),
     [conflicts, setConflicts] = useState<Set<string>>(new Set());
   useEffect(() => {
-    if (!modal && !unlock) return;
+    if (!modal && !unlock && !challenge && countdown === null) return;
     const previous = document.activeElement as HTMLElement | null;
     const dialog = document.querySelector<HTMLElement>(".modal");
     const background = Array.from(
@@ -147,7 +169,7 @@ export default function App() {
       for (const { element, inert } of background) element.inert = inert;
       previous?.focus();
     };
-  }, [modal, unlock]);
+  }, [modal, unlock, challenge, countdown !== null]);
   const started = useRef(false),
     accessRef = useRef<Access | null>(null),
     pagesRef = useRef<LocalPage[]>([]),
@@ -182,6 +204,9 @@ export default function App() {
     );
     if (
       seq !== refreshSequence.current ||
+      accessRef.current?.id !== a.id ||
+      accessRef.current?.token !== a.token ||
+      accessRef.current?.key !== a.key ||
       view.revision < spaceRevision.current
     )
       return;
@@ -198,7 +223,7 @@ export default function App() {
             markConflict(remote.record.id);
           return local;
         }
-        if (initial && a.role === "owner") {
+        if (initial && a.role === "owner" && !a.viewOnly) {
           try {
             const raw = localStorage.getItem(draftKey(a.id, remote.record.id));
             if (raw) {
@@ -231,6 +256,9 @@ export default function App() {
     }
     if (
       seq !== refreshSequence.current ||
+      accessRef.current?.id !== a.id ||
+      accessRef.current?.token !== a.token ||
+      accessRef.current?.key !== a.key ||
       view.revision < spaceRevision.current
     )
       return;
@@ -260,7 +288,14 @@ export default function App() {
     setActive((current) =>
       merged.some((p) => p.record.id === current)
         ? current
-        : merged[0]?.record.id || "",
+        : (() => {
+            try {
+              const saved = localStorage.getItem(`2space:active:${a.id}`);
+              if (merged.some((page) => page.record.id === saved))
+                return saved!;
+            } catch {}
+            return merged[0]?.record.id || "";
+          })(),
     );
   }
   async function refresh(initial = false, a = accessRef.current) {
@@ -273,6 +308,7 @@ export default function App() {
       const view = await request<SpaceView>(`/spaces/${a.id}`, a.token);
       await decodeSpace(view, a, initial);
     } catch (e) {
+      if (passwordChallenge(e, a)) return;
       if (e instanceof RequestError && [401, 403, 404].includes(e.status)) {
         setOnline(false);
         setFatal(
@@ -289,34 +325,131 @@ export default function App() {
         );
     }
   }
+  function passwordChallenge(error: unknown, a?: Access): boolean {
+    if (
+      !(error instanceof RequestError) ||
+      error.code !== "PASSWORD_REQUIRED" ||
+      !error.spaceId
+    )
+      return false;
+    suspendedAccess.current = a || accessRef.current;
+    refreshSequence.current++;
+    const token = a?.token || accessRef.current?.token || "";
+    accessRef.current = null;
+    setChallenge({
+      id: error.spaceId,
+      token,
+    });
+    setUnlockPassword("");
+    setReady(false);
+    setAccess(null);
+    setCountdown(null);
+    return true;
+  }
+  function localLockRequired(a: Access): boolean {
+    try {
+      if (sessionStorage.getItem(`2space:locked:${a.id}`) !== "1") return false;
+    } catch {
+      return false;
+    }
+    suspendedAccess.current = a;
+    refreshSequence.current++;
+    accessRef.current = null;
+    setAccess(null);
+    setReady(false);
+    setChallenge({ id: a.id, token: a.token });
+    setUnlockPassword("");
+    return true;
+  }
   async function enter(a: Access, initialView?: SpaceView) {
+    if (localLockRequired(a)) return;
     setReady(false);
     accessRef.current = a;
     setAccess(a);
     setFatal("");
-    setStatus(a.role === "reader" ? "仅查看" : "已保存");
+    setStatus(a.role === "reader" || a.viewOnly ? "仅查看" : "已保存");
     if (initialView) await decodeSpace(initialView, a, true);
     else await refresh(true, a);
+    if (accessRef.current?.id !== a.id) return;
     setReady(true);
+    if (!visited.current.has(a.id)) {
+      visited.current.add(a.id);
+      void request<SpaceView>(`/spaces/${a.id}/visits`, a.token, "POST", {})
+        .then((view) => {
+          if (view.revision >= spaceRevision.current) setSpace(view);
+        })
+        .catch((error) => {
+          passwordChallenge(error, a);
+        });
+    }
+  }
+  async function openPublic(
+    name: string,
+    viewOnly = false,
+    existing?: SpaceView,
+  ) {
+    const view =
+      existing ||
+      (await request<SpaceView>(`/spaces/by-name/${encodeURIComponent(name)}`));
+    if (view.accessMode !== "public" || !view.publicKey) {
+      setLockedName(name);
+      return;
+    }
+    await enter(
+      {
+        id: view.id,
+        name: view.name || name,
+        key: view.publicKey,
+        token: "",
+        role: view.role,
+        isPublic: true,
+        viewOnly,
+      },
+      view,
+    );
   }
   async function initialize() {
+    let pendingToken = "";
     try {
       const entry = parseEntry(new URL(location.href));
       if (entry.kind === "home") return;
       if (entry.kind === "locked") {
-        setLockedName(entry.name);
+        try {
+          await openPublic(
+            entry.name,
+            new URLSearchParams(location.search).has("readonly"),
+          );
+        } catch (error) {
+          if (error instanceof RequestError && error.status === 404) {
+            await createSpace(
+              entry.name,
+              new URLSearchParams(location.search).has("readonly"),
+            );
+            return;
+          }
+          if (
+            error instanceof RequestError &&
+            error.code !== "PASSWORD_REQUIRED" &&
+            [401, 403].includes(error.status)
+          ) {
+            setLockedName(entry.name);
+            return;
+          }
+          throw error;
+        }
         return;
       }
       if (entry.kind === "legacy") {
-        const { params, id } = entry;
-        const token = params.get("m") || params.get("r"),
+        const { params, id } = entry,
+          token = params.get("m") || params.get("r"),
           key = params.get("k");
+        pendingToken = token || "";
         if (!token) throw Error("链接不完整，请重新复制后打开。");
         if (params.get("w")) {
           setUnlock(params);
           return;
         }
-        if (!key) throw Error("链接不完整，请向分享者索取完整链接。");
+        if (!key) throw Error("链接不完整，请重新复制后打开。");
         await enter({
           id,
           key,
@@ -328,6 +461,7 @@ export default function App() {
       setBusy(true);
       if (entry.kind === "owner") {
         const { key, token } = await deriveOwner(entry.seed);
+        pendingToken = token;
         const view = await request<SpaceView>(
           `/spaces/by-name/${entry.name}`,
           token,
@@ -338,12 +472,12 @@ export default function App() {
         );
       } else {
         const { token } = await deriveReader(entry.seed);
+        pendingToken = token;
         const view = await request<SpaceView>(
           `/spaces/by-name/${entry.name}`,
           token,
         );
-        if (!view.readerKey)
-          throw Error("分享链接已失效，请向分享者索取新链接。");
+        if (!view.readerKey) throw Error("链接已失效，请向分享者索取新链接。");
         const key = await unwrapReaderKey(view.readerKey, entry.seed);
         await enter(
           { id: view.id, key, token, role: view.role, name: entry.name },
@@ -351,11 +485,22 @@ export default function App() {
         );
       }
     } catch (error) {
+      if (
+        error instanceof RequestError &&
+        error.code === "PASSWORD_REQUIRED" &&
+        error.spaceId
+      ) {
+        setChallenge({ id: error.spaceId, token: pendingToken });
+        setUnlockPassword("");
+        setReady(false);
+        setAccess(null);
+        return;
+      }
       setFatal(
         error instanceof RequestError && [401, 403, 404].includes(error.status)
-          ? "无法打开空间。请检查访问码，或向分享者索取新链接。"
+          ? "空间不存在、已到期，或链接已失效，请向分享者确认。"
           : error instanceof DOMException
-            ? "无法打开内容，请重新复制完整链接后打开。"
+            ? "链接无法打开，请重新复制完整链接。"
             : message(error),
       );
     } finally {
@@ -368,7 +513,7 @@ export default function App() {
     void initialize();
   }, []);
   useEffect(() => {
-    if (!access || !ready) return;
+    if (!access || !ready || challenge) return;
     const controller = new AbortController();
     void subscribe(
       access.id,
@@ -380,7 +525,7 @@ export default function App() {
       setOnline,
     );
     return () => controller.abort();
-  }, [access?.id, access?.token, ready]);
+  }, [access?.id, access?.token, ready, challenge]);
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
       if (dirty.current.size) {
@@ -405,49 +550,68 @@ export default function App() {
     window.addEventListener("online", handler);
     return () => window.removeEventListener("online", handler);
   }, [conflicts]);
-  async function createSpace() {
+  async function createSpace(givenName = spaceName, viewOnly = false) {
     if (busy) return;
-    if (!validSpaceName(spaceName)) {
-      setNotice(
-        "名称需3–32个小写字母、数字或中划线，首尾不能是中划线。请检查或换一个名称。",
-      );
+    const name = givenName.trim() || randomExperienceName();
+    if (!validSpaceName(name)) {
+      setNotice("名称仅支持1–64位字母、数字、下划线或中划线，请换一个名称。");
       return;
     }
     setBusy(true);
     setFatal("");
     setNameConflict(false);
     try {
-      const seed = newSeed("owner"),
-        { key, token } = await deriveOwner(seed),
-        pageId = crypto.randomUUID(),
-        payload = await encryptDocument(emptyDoc("我的剪贴板"), key);
-      const view = await request<SpaceView>("/spaces", undefined, "POST", {
-        name: spaceName,
-        ownerToken: token,
-        retentionSeconds: 86400,
-        page: { id: pageId, payload },
-      });
-      history.replaceState(
-        null,
-        "",
-        compactLink(location.origin, spaceName, "owner", seed),
-      );
-      await enter(
-        {
-          id: view.id,
-          key,
-          token,
-          role: "owner",
-          name: view.name || spaceName,
-        },
-        view,
-      );
-      setNotice("空间已创建。请保存完整链接，只记住名称无法重新打开。");
+      let view: SpaceView | undefined;
+      try {
+        view = await request<SpaceView>(
+          `/spaces/by-name/${encodeURIComponent(name)}`,
+        );
+      } catch (error) {
+        if (
+          error instanceof RequestError &&
+          error.code === "PASSWORD_REQUIRED" &&
+          error.spaceId
+        ) {
+          history.replaceState(null, "", `/${name}`);
+          setChallenge({ id: error.spaceId, token: "" });
+          return;
+        }
+        if (
+          error instanceof RequestError &&
+          [401, 403].includes(error.status)
+        ) {
+          history.replaceState(null, "", `/${name}`);
+          setLockedName(name);
+          return;
+        }
+        if (!(error instanceof RequestError) || error.status !== 404)
+          throw error;
+      }
+      if (!view) {
+        const key = randomSecret(),
+          payload = await encryptDocument(emptyDoc(), key);
+        try {
+          view = await request<SpaceView>("/spaces", undefined, "POST", {
+            name,
+            accessMode: "public",
+            publicKey: key,
+            ownerToken: randomSecret(),
+            retentionSeconds: 0,
+            page: { id: crypto.randomUUID(), payload },
+          });
+        } catch (error) {
+          if (error instanceof RequestError && error.code === "NAME_TAKEN")
+            view = await request<SpaceView>(
+              `/spaces/by-name/${encodeURIComponent(name)}`,
+            );
+          else throw error;
+        }
+      }
+      history.replaceState(null, "", `/${name}${viewOnly ? "?readonly" : ""}`);
+      if (view.accessMode === "public") await openPublic(name, viewOnly, view);
+      else setLockedName(name);
     } catch (error) {
-      if (error instanceof RequestError && error.code === "NAME_TAKEN") {
-        setNameConflict(true);
-        setNotice("这个名称已被使用，请换一个名称，或使用访问码打开已有空间。");
-      } else setNotice(message(error));
+      if (!passwordChallenge(error)) setNotice(message(error));
     } finally {
       setBusy(false);
     }
@@ -461,7 +625,7 @@ export default function App() {
   }
   function updatePage(id: string, change: Partial<PlainDocument>) {
     const a = accessRef.current;
-    if (!a || a.role !== "owner") return;
+    if (!a || a.role !== "owner" || a.viewOnly) return;
     const current = pagesRef.current.find((p) => p.record.id === id);
     if (!current) return;
     const doc = { ...current.doc, ...change };
@@ -494,7 +658,7 @@ export default function App() {
       id,
       setTimeout(() => {
         void save(id);
-      }, 650),
+      }, 600),
     );
   }
   async function save(id: string) {
@@ -502,6 +666,7 @@ export default function App() {
     if (
       !a ||
       a.role !== "owner" ||
+      a.viewOnly ||
       !dirty.current.has(id) ||
       saving.current.has(id) ||
       conflictRef.current.has(id)
@@ -557,6 +722,10 @@ export default function App() {
       }
       setStatus(dirty.current.size ? "还有修改尚未保存" : "已保存");
     } catch (e) {
+      if (passwordChallenge(e, a)) {
+        setStatus("请输入密码后继续保存。");
+        return;
+      }
       if (e instanceof RequestError && e.status === 409) markConflict(id);
       else {
         retry =
@@ -611,36 +780,52 @@ export default function App() {
       );
       publish([...pagesRef.current, { record, doc }]);
       setActive(id);
+      setRenameId(id);
       setStatus("已保存");
       void refresh();
       return true;
     } catch (e) {
-      setNotice(message(e));
+      if (!passwordChallenge(e, a)) setNotice(message(e));
       return false;
     } finally {
       setBusy(false);
     }
   }
-  async function deletePage() {
+  async function deletePage(targetId = active, confirmed = false) {
     const a = accessRef.current,
-      item = pagesRef.current.find((p) => p.record.id === active);
-    if (!a || !item || pages.length <= 1) return;
-    if (!confirm("删除这篇笔记？删除后无法找回。")) return;
+      item = pagesRef.current.find((p) => p.record.id === targetId);
+    if (
+      !a ||
+      !item ||
+      pages.length <= 1 ||
+      pagesRef.current[0]?.record.id === targetId
+    )
+      return;
+    if (!confirmed) {
+      setPendingPageId(targetId);
+      setModal("deletePage");
+      return;
+    }
     try {
-      await request(`/spaces/${a.id}/pages/${active}`, a.token, "DELETE", {
+      await request(`/spaces/${a.id}/pages/${targetId}`, a.token, "DELETE", {
         expectedRevision: item.record.revision,
       });
-      dirty.current.delete(active);
+      dirty.current.delete(targetId);
       try {
-        localStorage.removeItem(draftKey(a.id, active));
+        localStorage.removeItem(draftKey(a.id, targetId));
       } catch {}
-      conflictRef.current.delete(active);
+      conflictRef.current.delete(targetId);
       setConflicts(new Set(conflictRef.current));
-      publish(pagesRef.current.filter((p) => p.record.id !== active));
+      publish(pagesRef.current.filter((p) => p.record.id !== targetId));
       setActive(pagesRef.current[0]?.record.id || "");
+      requestAnimationFrame(() =>
+        document
+          .querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')
+          ?.focus(),
+      );
       void refresh();
     } catch (e) {
-      setNotice(message(e));
+      if (!passwordChallenge(e, a)) setNotice(message(e));
     }
   }
   async function resolveConflict(keepLocal: boolean) {
@@ -705,8 +890,9 @@ export default function App() {
     const link = document.createElement("a");
     link.href = url;
     link.download =
-      (item.doc.title.replace(/[\\/:*?"<>|]/g, "_").slice(0, 60) || "笔记") +
-      ".txt";
+      (pageLabel(item, pagesRef.current.indexOf(item))
+        .replace(/[\\/:*?"<>|]/g, "_")
+        .slice(0, 60) || "笔记") + ".txt";
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -748,10 +934,10 @@ export default function App() {
       );
     }
   }
-  async function showShareLink(link: string) {
+  async function showShareLink(link: string, copy = true) {
     setShareLink(link);
     setQr("");
-    await copyShare(link);
+    if (copy) await copyShare(link);
     try {
       const QRCode = await import("qrcode");
       setQr(
@@ -765,7 +951,7 @@ export default function App() {
       setShareMessage("二维码暂时无法显示，请复制链接分享。");
     }
   }
-  async function makeShare(replace = false, passwordLink = false) {
+  async function makeShare(replace = false, passwordLink = false, copy = true) {
     const a = accessRef.current;
     if (!a || a.role !== "owner" || preparingShare.current) return;
     if (
@@ -807,6 +993,12 @@ export default function App() {
       if (!descriptor) throw Error("分享链接暂时无法使用，请重试。");
       // A concurrent request may have won create-or-get; always recover the server's seed.
       const seed = await recoverShareSeed(descriptor, a.key);
+      preparedReadLink.current = compactLink(
+        location.origin,
+        name,
+        "reader",
+        seed,
+      );
       if (passwordLink) {
         if (!sharePassword) throw Error("请先输入访问密码。");
         const { token } = await deriveReader(seed),
@@ -815,7 +1007,10 @@ export default function App() {
           `${location.origin}/s/${a.id}#${new URLSearchParams({ r: token, ...wrapped })}`,
         );
       } else
-        await showShareLink(compactLink(location.origin, name, "reader", seed));
+        await showShareLink(
+          compactLink(location.origin, name, "reader", seed),
+          copy,
+        );
       if (replace) setNotice("分享链接已更换，之前的仅查看链接已失效。");
     } catch (error) {
       setShareMessage(message(error));
@@ -828,6 +1023,7 @@ export default function App() {
     if (!access) return;
     try {
       await request(`/spaces/${access.id}/shares`, access.token, "DELETE");
+      preparedReadLink.current = "";
       setShareLink("");
       setQr("");
       setShareMessage(
@@ -904,568 +1100,675 @@ export default function App() {
       setBusy(false);
     }
   }
-  const current = pages.find((p) => p.record.id === active),
-    reader = access?.role === "reader";
+  async function orderPages(ids: string[]) {
+    const a = accessRef.current;
+    if (!a || a.viewOnly || a.role !== "owner") return;
+    try {
+      await request(`/spaces/${a.id}/pages/order`, a.token, "POST", { ids });
+      const order = new Map(ids.map((id, index) => [id, index]));
+      publish(
+        [...pagesRef.current].sort(
+          (left, right) =>
+            (order.get(left.record.id) ?? 0) -
+            (order.get(right.record.id) ?? 0),
+        ),
+      );
+      setNotice("顺序已保存");
+      void refresh();
+    } catch (error) {
+      if (!passwordChallenge(error, a)) setNotice(message(error));
+    }
+  }
+  async function changeRetention() {
+    const a = accessRef.current;
+    if (!a) return;
+    if (
+      retentionDraft &&
+      space &&
+      new Date(space.updatedAt).getTime() + retentionDraft * 1000 <=
+        Date.now() &&
+      !confirm("按上次保存时间计算，保存后会立即删除此空间。确定继续？")
+    )
+      return;
+    setBusy(true);
+    try {
+      const view = await request<SpaceView>(
+        `/spaces/${a.id}`,
+        a.token,
+        "PATCH",
+        { retentionSeconds: retentionDraft },
+      );
+      setSpace(view);
+      setModal(null);
+      setNotice("保留时间已设置。");
+    } catch (error) {
+      if (!passwordChallenge(error, a)) setNotice(message(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function changePassword() {
+    const a = accessRef.current;
+    if (!a) return;
+    setBusy(true);
+    try {
+      const view = await request<SpaceView>(
+        `/spaces/${a.id}/password`,
+        a.token,
+        "POST",
+        { password: spacePassword },
+      );
+      setSpace(view);
+      setSpacePassword("");
+      setModal(null);
+      setNotice(view.passwordProtected ? "密码已设置" : "密码已移除");
+    } catch (error) {
+      if (!passwordChallenge(error, a)) setNotice(message(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function unlockWholeSpace() {
+    if (!challenge) return;
+    setBusy(true);
+    try {
+      await request(`/spaces/${challenge.id}/unlock`, challenge.token, "POST", {
+        password: unlockPassword,
+      });
+      try {
+        sessionStorage.removeItem(`2space:locked:${challenge.id}`);
+      } catch {}
+      setLockMessage("");
+      const previous = suspendedAccess.current;
+      setChallenge(null);
+      setUnlockPassword("");
+      setModal(null);
+      if (previous?.id === challenge.id) await enter(previous);
+      else await initialize();
+    } catch (error) {
+      setNotice(message(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function lockCurrent() {
+    const a = accessRef.current;
+    if (!a) return;
+    try {
+      sessionStorage.setItem(`2space:locked:${a.id}`, "1");
+    } catch {
+      setLockMessage("无法记住锁定状态，请关闭此页后再使用。");
+    }
+    suspendedAccess.current = a;
+    refreshSequence.current++;
+    accessRef.current = null;
+    setChallenge({ id: a.id, token: a.token });
+    setAccess(null);
+    setReady(false);
+    setCountdown(null);
+    setModal(null);
+    setUnlockPassword("");
+    try {
+      await request(`/spaces/${a.id}/lock`, undefined, "POST");
+    } catch {
+      setLockMessage("连接中断，内容已隐藏。联网后输入密码继续。");
+    }
+  }
+  useEffect(() => {
+    if (!access || !ready || !space?.passwordProtected || challenge) return;
+    let idle: ReturnType<typeof setTimeout>,
+      interval: ReturnType<typeof setInterval> | undefined;
+    const reset = () => {
+      clearTimeout(idle);
+      if (interval) clearInterval(interval);
+      setCountdown(null);
+      idle = setTimeout(() => {
+        let count = 5;
+        setCountdown(count);
+        interval = setInterval(() => {
+          count--;
+          if (count <= 0) {
+            if (interval) clearInterval(interval);
+            void lockCurrent();
+          } else setCountdown(count);
+        }, 1000);
+      }, 180000);
+    };
+    const events = [
+      "mousemove",
+      "keydown",
+      "click",
+      "scroll",
+      "touchstart",
+    ] as const;
+    events.forEach((event) =>
+      document.addEventListener(event, reset, { passive: true }),
+    );
+    reset();
+    const onPageHide = () => {
+      navigator.sendBeacon(`/api/spaces/${access.id}/lock`);
+    };
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      clearTimeout(idle);
+      if (interval) clearInterval(interval);
+      events.forEach((event) => document.removeEventListener(event, reset));
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [access?.id, ready, space?.passwordProtected, challenge]);
+  useEffect(() => {
+    if (access && active) {
+      try {
+        localStorage.setItem(`2space:active:${access.id}`, active);
+      } catch {}
+    }
+  }, [active, access?.id]);
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (
+        access &&
+        (event.ctrlKey || event.metaKey) &&
+        event.key.toLowerCase() === "s"
+      ) {
+        event.preventDefault();
+        void save(active);
+      }
+    };
+    const onBlur = (event: FocusEvent) => {
+      if ((event.target as HTMLElement)?.closest?.(".tiptap"))
+        void save(active);
+    };
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("focusout", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("focusout", onBlur);
+    };
+  }, [active, access]);
+  useEffect(() => {
+    if (
+      access &&
+      !access.isPublic &&
+      access.role === "owner" &&
+      ready &&
+      !shareLink &&
+      !challenge
+    )
+      void makeShare(false, false, false);
+  }, [access?.id, ready]);
+  async function shareCurrent() {
+    let link: string;
+    if (access?.isPublic)
+      link = `${location.origin}/${access.name}${access.viewOnly ? "?readonly" : ""}`;
+    else if (access?.role === "reader") link = location.href;
+    else {
+      if (!preparedReadLink.current) await makeShare(false, false, false);
+      link = preparedReadLink.current;
+      if (!link) {
+        setNotice("仅查看链接尚未准备好，请稍后重试。");
+        return;
+      }
+    }
+    try {
+      if (navigator.share)
+        await navigator.share({
+          title: "2Space在线剪贴板",
+          text: "打开剪贴板",
+          url: link,
+        });
+      else {
+        await navigator.clipboard.writeText(link);
+        setNotice("链接已复制");
+      }
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError"))
+        setNotice("分享未完成，可复制右侧链接。");
+    }
+  }
+  async function supportShare(copyOnly = false) {
+    try {
+      if (!copyOnly && navigator.share)
+        await navigator.share({
+          title: "2Space在线剪贴板",
+          text: "用2Space跨设备传文字",
+          url: location.origin + "/",
+        });
+      else {
+        await navigator.clipboard.writeText(location.origin + "/");
+        setNotice("首页链接已复制，发给朋友即可。");
+      }
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError"))
+        setNotice("复制未成功，可从地址栏复制首页链接。");
+    }
+  }
+  const reader = access?.role === "reader" || !!access?.viewOnly;
+  const isPublic = !!access?.isPublic;
+  const editLink = access
+    ? isPublic
+      ? `${location.origin}/${access.name}`
+      : reader
+        ? ""
+        : location.href
+    : "";
+  const readLink = access
+    ? isPublic
+      ? `${location.origin}/${access.name}?readonly`
+      : reader
+        ? location.href
+        : shareLink
+    : "";
+  const showModal = !!modal || !!unlock || !!challenge || countdown !== null;
   return (
-    <div className={access ? "app app-workspace" : "app"}>
-      <header className="topbar">
-        <a className="brand" href="/" aria-label="2Space 首页">
-          <span className="brand-symbol">
-            <i />
-            <i />
-          </span>
-          <span>2Space</span>
-        </a>
-        <span className="tagline">这边复制，那边就有。</span>
-        <div className="top-actions">
-          <button className="text-button" onClick={() => setModal("privacy")}>
-            隐私与安全
-          </button>
-          <button className="secondary" onClick={() => setModal("open")}>
-            打开空间
-          </button>
-          {access && !reader && (
-            <button
-              className="primary"
-              onClick={() => {
-                setShareLink("");
-                setQr("");
-                setSharePassword("");
-                setModal("share");
-                void makeShare();
-              }}
-            >
-              分享空间
-            </button>
-          )}
+    <div className="app">
+      {access && !challenge ? (
+        <Workspace
+          space={space}
+          pages={pages}
+          active={active}
+          onActive={setActive}
+          reader={reader}
+          isPublic={isPublic}
+          busy={busy}
+          fatal={fatal}
+          status={status}
+          online={online}
+          conflicts={conflicts}
+          editLink={editLink}
+          readLink={readLink}
+          renameId={renameId}
+          onRenameDone={() => setRenameId("")}
+          onUpdate={updatePage}
+          onAdd={() => void addPage()}
+          onDelete={(id) => void deletePage(id)}
+          onOrder={(ids) => void orderPages(ids)}
+          onCopy={(rich) => void copy(rich)}
+          onDownload={download}
+          onShare={() => void shareCurrent()}
+          onPassword={() => {
+            setSpacePassword("");
+            setModal("password");
+          }}
+          onRetention={() => {
+            setRetentionDraft(space?.retentionSeconds ?? 0);
+            setModal("retention");
+          }}
+          onNotice={setNotice}
+          onSave={() => void save(active)}
+          onConflict={(keep) => void resolveConflict(keep)}
+          onPrivacy={() => setModal("privacy")}
+          onRemoveSpace={() => void deleteSpace()}
+        />
+      ) : (
+        <Home
+          busy={busy}
+          name={spaceName}
+          onName={setSpaceName}
+          onEnter={(name) => void createSpace(name)}
+          onSupport={() => setModal("support")}
+          lockedName={lockedName}
+          accessCode={accessCode}
+          onCode={setAccessCode}
+          onOpenCode={openByCode}
+        />
+      )}
+      {!access && fatal && (
+        <div className="page-error" role="alert">
+          {fatal}
         </div>
-      </header>
+      )}
       {notice && (
-        <div className="notice" role="status">
+        <div className="toast" role="status">
           <span>{notice}</span>
           <button aria-label="关闭提示" onClick={() => setNotice("")}>
             ×
           </button>
         </div>
       )}
-      {fatal && (
-        <div className="error-banner" role="alert">
-          {fatal}
-        </div>
-      )}
-      {!access ? (
-        <main className="welcome">
-          <div className="welcome-copy">
-            <span className="intro-mark">
-              {lockedName ? `打开 ${lockedName}` : "两端之间，留一小块空间"}
-            </span>
-            <h1>
-              粘贴过来，
-              <br />
-              带着格式过去。
-            </h1>
-            <p>
-              一段文字、一份代码，随手放下，换台设备接着用。
-              <br />
-              保留原有格式，分享给其他设备或朋友。
-            </p>
-            {lockedName ? (
-              <form
-                className="space-entry"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  openByCode();
-                }}
-              >
-                <label htmlFor="spaceAccessCode">访问码</label>
-                <input
-                  id="spaceAccessCode"
-                  value={accessCode}
-                  onChange={(event) => setAccessCode(event.target.value)}
-                  placeholder="粘贴访问码或完整空间链接"
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-                <p className="entry-hint">
-                  请输入访问码，或向分享者索取完整链接。
-                </p>
-                <button
-                  className="primary large"
-                  disabled={busy || !accessCode.trim()}
-                >
-                  打开已有空间
-                </button>
-              </form>
-            ) : (
-              <form
-                className="space-entry"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void createSpace();
-                }}
-              >
-                <label htmlFor="spaceName">空间名称</label>
-                <div className="name-input">
-                  <span aria-hidden="true">2space.cn /</span>
-                  <input
-                    id="spaceName"
-                    value={spaceName}
-                    onChange={(event) => {
-                      setSpaceName(event.target.value);
-                      setNameConflict(false);
-                    }}
-                    minLength={3}
-                    maxLength={32}
-                    autoComplete="off"
-                    spellCheck={false}
-                    aria-describedby="spaceNameHint"
-                    required
-                  />
-                </div>
-                <p id="spaceNameHint" className="entry-hint">
-                  名称可修改，支持3–32个小写字母、数字或中划线。它会显示在链接里，请勿使用私人信息。
-                </p>
-                <button className="primary large" disabled={busy || !!unlock}>
-                  {busy ? "正在创建…" : "创建我的空间"}
-                </button>
-                {nameConflict && (
-                  <button
-                    type="button"
-                    className="text-button"
-                    onClick={() => location.assign(`/${spaceName}`)}
-                  >
-                    打开已有空间
-                  </button>
-                )}
-              </form>
-            )}
-            <small>无需注册。默认保存1天，请保存好完整链接。</small>
-          </div>
-          <div
-            className="welcome-preview"
-            role="region"
-            aria-label="内容传递示意"
-          >
-            <div className="preview-caption">
-              <span className="dot" /> 在这里放下
-            </div>
-            <div className="preview-paper">
-              <h2>随手记，不必重新排版</h2>
-              <p>
-                重点依然<strong>清清楚楚</strong>，链接与列表一起保留。
-              </p>
-              <ul>
-                <li>网页里有用的几句话</li>
-                <li>另一台电脑要用的命令</li>
-              </ul>
-              <pre tabIndex={0} role="region" aria-label="代码示例">
-                <code>
-                  <span>const</span> space = <em>'just enough'</em>;
-                </code>
-              </pre>
-              <div className="preview-footer">
-                <span>内容加密保存</span>
-                <b>另一端接着用 ↗</b>
-              </div>
-            </div>
-          </div>
-        </main>
-      ) : (
-        <main className="workspace">
-          <aside className="sidebar">
-            <div className="sidebar-heading">
-              <h2>{space?.name || "我的空间"}</h2>
-              <span>
-                {pages.length}/{MAX_PAGES}
-              </span>
-            </div>
-            <p className="space-mode">
-              {reader
-                ? "仅查看，可复制和下载"
-                : "拿到此链接的人也能修改所有笔记"}
-            </p>
-            <nav aria-label="笔记列表">
-              {pages.map((p, index) => (
-                <button
-                  key={p.record.id}
-                  className={
-                    active === p.record.id ? "page-item selected" : "page-item"
-                  }
-                  onClick={() => setActive(p.record.id)}
-                >
-                  <span className="page-number">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <span>
-                    <b>{p.doc.title || "未命名笔记"}</b>
-                    <small>{p.doc.text.slice(0, 32) || "还没有内容"}</small>
-                  </span>
-                  {conflicts.has(p.record.id) && (
-                    <span className="conflict-dot" title="其他设备也有修改">
-                      !
-                    </span>
-                  )}
-                </button>
-              ))}
-            </nav>
-            {!reader && (
-              <button
-                className="add-page"
-                disabled={busy || pages.length >= MAX_PAGES}
-                onClick={() => void addPage()}
-              >
-                ＋ 新建笔记
-              </button>
-            )}
-            <div className="space-details">
-              <span className={online ? "connection connected" : "connection"}>
-                {online ? "内容实时更新" : "正在连接，请稍候"}
-              </span>
-              <label>
-                保存时长
-                <select
-                  disabled={reader || busy}
-                  value={space?.retentionSeconds || 86400}
-                  onChange={async (e) => {
-                    if (!access) return;
-                    try {
-                      const next = await request<SpaceView>(
-                        `/spaces/${access.id}`,
-                        access.token,
-                        "PATCH",
-                        { retentionSeconds: Number(e.target.value) },
-                      );
-                      setSpace(next);
-                      setNotice("保存时长已更新。");
-                    } catch (error) {
-                      setNotice(message(error));
-                    }
-                  }}
-                >
-                  {RETENTION_SECONDS.map((seconds, index) => (
-                    <option key={seconds} value={seconds}>
-                      {retentionNames[index]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <small>
-                修改后重新计算保存时间，打开空间不会延长时间。
-                {space && (
-                  <>
-                    到期时间
-                    <br />
-                    {new Date(space.expiresAt).toLocaleString("zh-CN")}
-                  </>
-                )}
-              </small>
-            </div>
-          </aside>
-          <section className="document-panel">
-            <div className="document-header">
-              <div className="document-title">
-                <span>{reader ? "仅查看" : "可编辑"}</span>
-                <input
-                  aria-label="笔记标题"
-                  placeholder="未命名笔记"
-                  maxLength={60}
-                  value={current?.doc.title || ""}
-                  disabled={reader || !current}
-                  onChange={(e) =>
-                    updatePage(active, { title: e.target.value })
-                  }
-                />
-              </div>
-              <div className="document-actions">
-                <button onClick={() => void copy(true)} className="secondary">
-                  复制内容
-                </button>
-                <button onClick={() => void copy()} className="text-button">
-                  仅复制文字
-                </button>
-                <button onClick={download} className="text-button">
-                  下载文字
-                </button>
-              </div>
-            </div>
-            {conflicts.has(active) && (
-              <div className="conflict-banner" role="alert">
-                <b>其他设备也修改了这篇笔记</b>
-                <p>
-                  你的修改还在。可以另存为新笔记，或放弃此页修改，使用其他设备保存的内容。
-                </p>
-                <button
-                  className="secondary"
-                  onClick={() => void resolveConflict(true)}
-                >
-                  另存为新笔记
-                </button>
-                <button
-                  className="text-button"
-                  onClick={() => {
-                    if (
-                      confirm("放弃此页未保存的修改，使用其他设备保存的内容？")
-                    )
-                      void resolveConflict(false);
-                  }}
-                >
-                  使用已保存的内容
-                </button>
-              </div>
-            )}
-            {current ? (
-              <Suspense
-                fallback={<div className="editor-loading">正在打开笔记…</div>}
-              >
-                <Editor
-                  html={current.doc.html}
-                  readOnly={!!reader || !!fatal}
-                  language={current.doc.language}
-                  onChange={(html, text) => updatePage(active, { html, text })}
-                  onLanguage={(language) => updatePage(active, { language })}
-                  onNotice={setNotice}
-                />
-              </Suspense>
-            ) : (
-              <div className="editor-loading">正在读取内容…</div>
-            )}
-            <footer className="document-footer">
-              <span
-                className={
-                  status.startsWith("保存失败")
-                    ? "save-state failed"
-                    : "save-state"
-                }
-                role="status"
-              >
-                {reader ? "查看内容" : status}
-              </span>
-              <span className="character-count">
-                {current?.doc.text.length || 0} 字符
-              </span>
-              {!reader && (
-                <>
-                  <button
-                    className="text-button"
-                    onClick={() => void save(active)}
-                  >
-                    立即保存
-                  </button>
-                  <button
-                    className="text-button danger"
-                    disabled={pages.length <= 1}
-                    onClick={() => void deletePage()}
-                  >
-                    删除笔记
-                  </button>
-                </>
-              )}
-            </footer>
-          </section>
-        </main>
-      )}
-      <footer className="site-footer">
-        <span className="version">2Space 1.0</span>
-        <span>文本与代码，现在刚刚好。</span>
-      </footer>
-      {modal && (
-        <div className="modal-backdrop" onClick={() => setModal(null)}>
+      {showModal && (
+        <div
+          className="modal-backdrop"
+          onClick={() => {
+            if (!challenge && !unlock && countdown === null) setModal(null);
+          }}
+        >
           <section
-            className="modal"
+            className={modal === "deletePage" ? "modal confirm" : "modal"}
             role="dialog"
             aria-modal="true"
             aria-label={
-              modal === "share"
-                ? "分享空间"
-                : modal === "open"
-                  ? "打开空间"
-                  : "隐私与安全"
+              challenge
+                ? "输入空间密码"
+                : unlock
+                  ? "打开受保护链接"
+                  : countdown !== null
+                    ? "会话超时"
+                    : modal === "deletePage"
+                      ? "删除记事本"
+                      : modal === "password"
+                        ? "设置剪贴板密码"
+                        : modal === "retention"
+                          ? "设置保留时间"
+                          : modal === "support"
+                            ? "支持2Space"
+                            : modal === "share"
+                              ? "分享空间"
+                              : modal === "open"
+                                ? "打开空间"
+                                : "隐私说明"
             }
-            onClick={(e) => e.stopPropagation()}
+            onClick={(event) => event.stopPropagation()}
           >
-            <button
-              className="modal-close"
-              aria-label="关闭窗口"
-              onClick={() => setModal(null)}
-            >
-              ×
-            </button>
-            {modal === "privacy" ? (
-              <>
-                <h2>链接与隐私</h2>
-                <p>内容加密保存。空间名称、保存时间和内容大小仍会被记录。</p>
-                <ul>
-                  <li>
-                    可编辑链接：拿到链接的人能查看、修改全部笔记，请勿公开分享。
-                  </li>
-                  <li>仅查看链接：对方能查看、复制和下载，不能修改。</li>
-                  <li>请保存好完整链接或访问码，丢失后无法找回内容。</li>
-                  <li>
-                    请在信任的设备上使用。设备上的恶意软件或扩展可能读取内容。
-                  </li>
-                  <li>粘贴的图片不会上传或加载，文字和常用格式会保留。</li>
-                </ul>
-                {access?.role === "owner" && (
-                  <div className="share-bottom">
-                    <button
-                      className="text-button danger"
-                      disabled={busy}
-                      onClick={() => void deleteSpace()}
-                    >
-                      删除整个空间
-                    </button>
-                    <small className="risk-note">
-                      永久删除全部笔记，无法恢复。
-                    </small>
-                  </div>
-                )}
-              </>
-            ) : modal === "open" ? (
-              <>
-                <h2>打开另一个空间</h2>
+            {!challenge && !unlock && countdown === null && (
+              <button
+                className="modal-close"
+                aria-label="关闭窗口"
+                onClick={() => setModal(null)}
+              >
+                ×
+              </button>
+            )}
+            {challenge ? (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void unlockWholeSpace();
+                }}
+              >
+                <h2>请输入剪贴板密码</h2>
                 <p>
-                  粘贴完整链接即可打开。能否修改内容，取决于分享给你的链接。
+                  {lockMessage || "此剪贴板设置了访问密码，输入后即可继续。"}
                 </p>
-                <textarea
-                  aria-label="空间链接"
-                  value={openLink}
-                  onChange={(e) => setOpenLink(e.target.value)}
-                  placeholder="粘贴空间链接"
+                <input
+                  className="input"
+                  type="password"
+                  aria-label="空间密码"
+                  autoComplete="current-password"
+                  value={unlockPassword}
+                  onChange={(event) => setUnlockPassword(event.target.value)}
+                  autoFocus
                 />
-                <button className="primary" onClick={() => void openExisting()}>
-                  打开空间
+                <div className="foot">
+                  <a className="btn ghost" href="/">
+                    返回首页
+                  </a>
+                  <button className="btn primary" disabled={busy}>
+                    {busy ? "正在打开…" : "打开剪贴板"}
+                  </button>
+                </div>
+              </form>
+            ) : unlock ? (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void unlockSpace();
+                }}
+              >
+                <h2>输入密码打开链接</h2>
+                <p>请输入分享者提供的密码。</p>
+                <input
+                  className="input"
+                  type="password"
+                  aria-label="解锁密码"
+                  autoComplete="current-password"
+                  value={unlockPassword}
+                  onChange={(event) => setUnlockPassword(event.target.value)}
+                  autoFocus
+                />
+                <div className="foot">
+                  <button className="btn primary" disabled={busy}>
+                    打开内容
+                  </button>
+                </div>
+              </form>
+            ) : countdown !== null ? (
+              <>
+                <h2>会话超时</h2>
+                <p>长时间无操作，需要重新输入密码。</p>
+                <p>{countdown}秒后退出</p>
+                <button
+                  className="btn primary"
+                  onClick={() => setCountdown(null)}
+                >
+                  继续使用
                 </button>
               </>
-            ) : (
+            ) : modal === "deletePage" ? (
               <>
-                <h2>分享这个空间</h2>
-                <p>
-                  对方能查看、复制和下载全部笔记，不能修改。再次分享仍使用同一个链接。
+                <h2>删除记事本</h2>
+                <p>确定删除这个记事本吗？此操作无法撤销。</p>
+                <div className="foot">
+                  <button className="btn ghost" onClick={() => setModal(null)}>
+                    取消
+                  </button>
+                  <button
+                    className="btn primary delete-confirm"
+                    onClick={() => {
+                      setModal(null);
+                      void deletePage(pendingPageId, true);
+                    }}
+                  >
+                    确认删除
+                  </button>
+                </div>
+              </>
+            ) : modal === "password" ? (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void changePassword();
+                }}
+              >
+                <h2>设置剪贴板密码</h2>
+                <input
+                  className="input"
+                  aria-label="新密码"
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="输入新密码（留空表示移除密码）"
+                  value={spacePassword}
+                  onChange={(event) => setSpacePassword(event.target.value)}
+                />
+                <p className="modal-desc">
+                  {space?.passwordProtected
+                    ? "输入新密码即可更改，留空保存可移除密码。"
+                    : "设置后，其他设备需要输入密码才能打开。"}
                 </p>
-                <div className="share-status" role="status">
-                  {shareMessage || "正在准备分享链接…"}
-                </div>
-                {shareLink && (
-                  <>
-                    <textarea
-                      aria-label="仅查看链接"
-                      readOnly
-                      value={shareLink}
-                      onFocus={(event) => event.currentTarget.select()}
-                    />
-                    {qr && (
-                      <img className="qr" src={qr} alt="仅查看链接二维码" />
-                    )}
-                    <button
-                      className="secondary"
-                      onClick={() => void copyShare(shareLink)}
-                    >
-                      复制仅查看链接
-                    </button>
-                  </>
-                )}
-                {!busy && !shareLink && (
+                <div className="foot">
                   <button
-                    className="secondary"
-                    onClick={() => void makeShare()}
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => setModal(null)}
                   >
-                    重试
+                    取消
                   </button>
-                )}
-                <div className="share-bottom">
-                  <button
-                    className="text-button"
-                    onClick={() =>
-                      void navigator.clipboard
-                        .writeText(location.href)
-                        .then(() =>
-                          setShareMessage(
-                            "可编辑链接已复制，拿到链接的人也能修改全部笔记。",
-                          ),
-                        )
-                        .catch(() =>
-                          setShareMessage(
-                            "复制未成功，请从地址栏复制完整链接。",
-                          ),
-                        )
-                    }
-                  >
-                    复制可编辑链接
+                  <button className="btn primary" disabled={busy}>
+                    保存
                   </button>
                 </div>
+              </form>
+            ) : modal === "retention" ? (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void changeRetention();
+                }}
+              >
+                <h2>设置保留时间</h2>
+                <p className="modal-desc">
+                  以上次保存内容时间为起点，到期自动删除整个剪贴板（含全部记事本）。每次保存内容会重新计时，打开查看不会续期。
+                </p>
+                <select
+                  className="input"
+                  aria-label="保留时间"
+                  value={retentionDraft}
+                  onChange={(event) =>
+                    setRetentionDraft(Number(event.target.value))
+                  }
+                >
+                  {[
+                    ...RETENTION_SECONDS.filter((seconds) => seconds !== 0),
+                    0,
+                  ].map((seconds) => (
+                    <option key={seconds} value={seconds}>
+                      {
+                        RETENTION_LABELS[
+                          RETENTION_SECONDS.indexOf(
+                            seconds as (typeof RETENTION_SECONDS)[number],
+                          )
+                        ]
+                      }
+                    </option>
+                  ))}
+                </select>
+                <p className="modal-desc">
+                  到期时间：
+                  {retentionDraft === 0
+                    ? "永久保留"
+                    : space
+                      ? new Date(
+                          new Date(space.updatedAt).getTime() +
+                            retentionDraft * 1000,
+                        ).toLocaleString("zh-CN")
+                      : "—"}
+                </p>
+                <div className="foot">
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    onClick={() => setModal(null)}
+                  >
+                    取消
+                  </button>
+                  <button className="btn primary" disabled={busy}>
+                    保存
+                  </button>
+                </div>
+              </form>
+            ) : modal === "support" ? (
+              <>
+                <h2>支持2Space</h2>
+                <p>把这个方便的小工具推荐给朋友，也是对2Space的支持。</p>
+                <div className="support-actions">
+                  <button
+                    className="btn primary"
+                    onClick={() => void supportShare(true)}
+                  >
+                    复制首页链接
+                  </button>
+                  <button
+                    className="btn ghost"
+                    onClick={() => void supportShare()}
+                  >
+                    分享给朋友
+                  </button>
+                </div>
+                <p className="modal-desc">
+                  也可以把首页加入浏览器收藏，下次随手打开。
+                </p>
+              </>
+            ) : modal === "privacy" ? (
+              <>
+                <h2>隐私说明</h2>
+                <p>
+                  {isPublic
+                    ? "知道名称的人可以查看和修改此剪贴板，设置密码可限制访问。仅查看链接只改变页面模式。"
+                    : "此空间继续使用原有链接权限，仅查看链接不能修改内容。请妥善保存可编辑链接，丢失后无法找回。"}
+                </p>
+                <p>
+                  不要存放账号密码、银行卡号等高度敏感信息。删除不能收回别人已经复制的内容，重要内容请另行备份。
+                </p>
+                {!isPublic && !reader && (
+                  <button
+                    className="btn ghost"
+                    onClick={() => {
+                      setModal("share");
+                      void makeShare();
+                    }}
+                  >
+                    仅查看分享设置
+                  </button>
+                )}
+                <div className="foot">
+                  <button
+                    className="btn ghost danger"
+                    onClick={() => void deleteSpace()}
+                  >
+                    删除整个剪贴板
+                  </button>
+                </div>
+              </>
+            ) : modal === "share" ? (
+              <>
+                <h2>仅查看分享</h2>
+                <p>分享整个空间的所有记事本，对方只能查看和复制。</p>
+                <div role="status" className="share-status">
+                  {shareMessage || "正在准备链接…"}
+                </div>
+                <input
+                  className="input"
+                  aria-label="仅查看分享链接"
+                  readOnly
+                  value={shareLink}
+                />
+                <button
+                  className="btn primary"
+                  onClick={() => void copyShare(shareLink)}
+                >
+                  复制仅查看链接
+                </button>
                 <details className="share-advanced">
-                  <summary>高级设置</summary>
-                  <p>
-                    可以为新链接设置密码。此前分享的链接仍可打开；如需停用，请先更换分享链接。
-                  </p>
-                  <label className="field-label">
-                    访问密码
+                  <summary>更多分享设置</summary>
+                  <label>
+                    链接密码
                     <input
+                      className="input"
                       type="password"
-                      autoComplete="new-password"
                       value={sharePassword}
                       onChange={(event) => setSharePassword(event.target.value)}
-                      placeholder="设置访问密码"
                     />
                   </label>
                   <button
-                    className="secondary"
-                    disabled={busy || !sharePassword}
+                    className="btn ghost"
+                    disabled={!sharePassword || busy}
                     onClick={() => void makeShare(false, true)}
                   >
-                    复制带密码的链接
+                    生成密码链接
                   </button>
-                  <div className="share-bottom">
-                    <button
-                      className="text-button"
-                      disabled={busy}
-                      onClick={() => void makeShare(true)}
-                    >
-                      更换分享链接
-                    </button>
-                    <button
-                      className="text-button danger"
-                      disabled={busy}
-                      onClick={() => void revoke()}
-                    >
-                      关闭分享
-                    </button>
-                  </div>
-                  <p className="risk-note">
-                    更换链接或关闭分享后，之前的仅查看链接将无法打开。对方已复制的内容无法收回。
-                  </p>
+                  <button
+                    className="btn ghost"
+                    disabled={busy}
+                    onClick={() => void makeShare(true)}
+                  >
+                    更新链接
+                  </button>
+                  <button
+                    className="btn ghost danger"
+                    onClick={() => void revoke()}
+                  >
+                    关闭分享
+                  </button>
+                  <p>更新或关闭后旧链接将失效；对方已复制的内容无法收回。</p>
                 </details>
               </>
+            ) : (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void openExisting();
+                }}
+              >
+                <h2>打开空间</h2>
+                <input
+                  className="input"
+                  aria-label="空间链接"
+                  value={openLink}
+                  onChange={(event) => setOpenLink(event.target.value)}
+                />
+                <button className="btn primary">打开空间</button>
+              </form>
             )}
           </section>
-        </div>
-      )}
-      {unlock && (
-        <div className="modal-backdrop">
-          <form
-            className="modal"
-            role="dialog"
-            aria-modal="true"
-            aria-label="解锁空间"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void unlockSpace();
-            }}
-          >
-            <h2>输入访问密码</h2>
-            <p>请输入分享者提供的密码。</p>
-            <input
-              aria-label="访问密码"
-              type="password"
-              autoComplete="current-password"
-              value={unlockPassword}
-              onChange={(e) => setUnlockPassword(e.target.value)}
-              autoFocus
-            />
-            <button className="primary" disabled={busy}>
-              {busy ? "正在打开…" : "打开空间"}
-            </button>
-          </form>
         </div>
       )}
     </div>

@@ -374,7 +374,7 @@ test("static serving supports workspace paths without exposing sibling files", a
       404,
     );
     assert.equal((await app.inject("/privacy")).statusCode, 404);
-    assert.equal((await app.inject("/Name-With-Caps")).statusCode, 404);
+    assert.equal((await app.inject("/Name_With-Caps")).statusCode, 200);
     assert.equal((await app.inject("/api/unknown")).statusCode, 404);
     const traversal = await app.inject("/%2e%2e/%2e%2e/etc/passwd");
     assert.notEqual(traversal.statusCode, 200);

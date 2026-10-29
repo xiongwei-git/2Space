@@ -127,89 +127,99 @@ export default function Editor({
   return (
     <div className="editor-shell">
       {!readOnly && (
-        <div className="editor-tools" role="group" aria-label="文字格式">
-          {tool("B", "加粗", editor.isActive("bold"), () =>
-            editor.chain().focus().toggleBold().run(),
-          )}
-          {tool("I", "斜体", editor.isActive("italic"), () =>
-            editor.chain().focus().toggleItalic().run(),
-          )}
-          {tool("U", "下划线", editor.isActive("underline"), () =>
-            editor.chain().focus().toggleUnderline().run(),
-          )}
-          <span className="tool-divider" />
-          {tool("标题", "二级标题", editor.isActive("heading"), () =>
-            editor.chain().focus().toggleHeading({ level: 2 }).run(),
-          )}
-          {tool("列表", "无序列表", editor.isActive("bulletList"), () =>
-            editor.chain().focus().toggleBulletList().run(),
-          )}
-          {tool("引用", "引用", editor.isActive("blockquote"), () =>
-            editor.chain().focus().toggleBlockquote().run(),
-          )}
-          {tool("链接", "插入或修改链接", editor.isActive("link"), () => {
-            const url = window.prompt(
-              "粘贴完整网址",
-              editor.getAttributes("link").href || "https://",
-            );
-            if (url === null) return;
-            if (!url.trim()) {
-              editor.chain().focus().unsetLink().run();
-              return;
-            }
-            if (!/^(https?:\/\/|mailto:)/i.test(url)) {
-              onNotice("请输入完整网址，例如 https://example.com。");
-              return;
-            }
-            editor
-              .chain()
-              .focus()
-              .extendMarkRange("link")
-              .setLink({ href: url })
-              .run();
-          })}
-          {tool("代码", "代码块", editor.isActive("codeBlock"), () =>
-            editor.chain().focus().toggleCodeBlock({ language }).run(),
-          )}
-          {tool("表格", "插入简单表格", editor.isActive("table"), () => {
-            editor
-              .chain()
-              .focus()
-              .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-              .run();
-          })}
-          <select
-            aria-label="代码语言"
-            value={language}
-            onChange={(e) => {
-              onLanguage(e.target.value);
-              if (editor.isActive("codeBlock"))
-                editor
-                  .chain()
-                  .focus()
-                  .updateAttributes("codeBlock", { language: e.target.value })
-                  .run();
-            }}
-          >
-            {[
-              "plaintext",
-              "javascript",
-              "typescript",
-              "json",
-              "bash",
-              "python",
-              "css",
-              "xml",
-              "sql",
-            ].map((l) => (
-              <option key={l} value={l}>
-                {l === "plaintext" ? "不高亮" : l}
-              </option>
-            ))}
-          </select>
-        </div>
+        <details className="editor-format">
+          <summary>文字格式</summary>
+          <div className="editor-tools" role="group" aria-label="文字格式">
+            {tool("B", "加粗", editor.isActive("bold"), () =>
+              editor.chain().focus().toggleBold().run(),
+            )}
+            {tool("I", "斜体", editor.isActive("italic"), () =>
+              editor.chain().focus().toggleItalic().run(),
+            )}
+            {tool("U", "下划线", editor.isActive("underline"), () =>
+              editor.chain().focus().toggleUnderline().run(),
+            )}
+            <span className="tool-divider" />
+            {tool("标题", "二级标题", editor.isActive("heading"), () =>
+              editor.chain().focus().toggleHeading({ level: 2 }).run(),
+            )}
+            {tool("列表", "无序列表", editor.isActive("bulletList"), () =>
+              editor.chain().focus().toggleBulletList().run(),
+            )}
+            {tool("引用", "引用", editor.isActive("blockquote"), () =>
+              editor.chain().focus().toggleBlockquote().run(),
+            )}
+            {tool("链接", "插入或修改链接", editor.isActive("link"), () => {
+              const url = window.prompt(
+                "粘贴完整网址",
+                editor.getAttributes("link").href || "https://",
+              );
+              if (url === null) return;
+              if (!url.trim()) {
+                editor.chain().focus().unsetLink().run();
+                return;
+              }
+              if (!/^(https?:\/\/|mailto:)/i.test(url)) {
+                onNotice("请输入完整网址，例如 https://example.com。");
+                return;
+              }
+              editor
+                .chain()
+                .focus()
+                .extendMarkRange("link")
+                .setLink({ href: url })
+                .run();
+            })}
+            {tool("代码", "代码块", editor.isActive("codeBlock"), () =>
+              editor.chain().focus().toggleCodeBlock({ language }).run(),
+            )}
+            {tool("表格", "插入简单表格", editor.isActive("table"), () => {
+              editor
+                .chain()
+                .focus()
+                .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+                .run();
+            })}
+            <select
+              aria-label="代码语言"
+              value={language}
+              onChange={(e) => {
+                onLanguage(e.target.value);
+                if (editor.isActive("codeBlock"))
+                  editor
+                    .chain()
+                    .focus()
+                    .updateAttributes("codeBlock", { language: e.target.value })
+                    .run();
+              }}
+            >
+              {[
+                "plaintext",
+                "javascript",
+                "typescript",
+                "json",
+                "bash",
+                "python",
+                "css",
+                "xml",
+                "sql",
+              ].map((l) => (
+                <option key={l} value={l}>
+                  {l === "plaintext" ? "不高亮" : l}
+                </option>
+              ))}
+            </select>
+          </div>
+        </details>
       )}
-      <EditorContent editor={editor} />
+      <div className="editor-content">
+        <EditorContent editor={editor} />
+        {!readOnly && editor.isEmpty && (
+          <div className="editor-placeholder" aria-hidden="true">
+            在这里粘贴或输入文字，内容会自动保存。点击「＋ 新建」可添加记事本。
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -24,11 +24,10 @@ test("命名校验与随机默认值符合契约，不接受保留字", () => {
   for (const name of [
     "api",
     "share",
-    "ab",
-    "Name",
-    "-abc",
-    "abc-",
-    "a".repeat(33),
+    "API",
+    "invalid name",
+    "abc/def",
+    "a".repeat(65),
   ])
     assert(!validSpaceName(name));
 });

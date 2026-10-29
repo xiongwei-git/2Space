@@ -59,7 +59,16 @@ test("named space requires authorization, rejects conflicts/reserved names, and 
       retentionSeconds: 1800,
       page: { id: randomUUID(), payload: payload() },
     };
-    for (const name of ["api", "assets", "Hello", "aa", "-abc", "abc-", ""]) {
+    for (const name of [
+      "api",
+      "API",
+      "assets",
+      "a/b",
+      "中文",
+      "a b",
+      "",
+      "x".repeat(65),
+    ]) {
       const bad = await app.inject({
         method: "POST",
         url: "/api/spaces",
@@ -304,6 +313,9 @@ test("real v1 database migrates additively and compact descriptor survives resta
       headers: auth(owner),
     });
     assert.equal(migrated.statusCode, 200);
+    assert.equal(migrated.json().accessMode, "private");
+    assert.equal(migrated.json().publicKey, undefined);
+    assert.equal(migrated.json().passwordProtected, false);
     assert.deepEqual(migrated.json().pages[0].payload, encrypted);
     assert.equal(
       (await app.inject({ url: `/api/spaces/${id}`, headers: auth(reader) }))

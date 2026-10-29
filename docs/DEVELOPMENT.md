@@ -8,7 +8,7 @@
 
 ## 架构
 
-单仓npm workspaces：apps/web(React/Vite/Tiptap)、apps/server(Fastify/SQLite)、packages/shared(纯类型与常量)。浏览器AES-GCM加密正文，API只存密文。单实例SQLite+SSE，Docker volume持久化。生产扩容不是1.0目标。
+单仓npm workspaces：apps/web(React/Vite/Tiptap)、apps/server(Fastify/SQLite)、packages/shared(纯类型与常量)。浏览器AES-GCM处理正文；旧private密钥只在浏览器，新public密钥按用户授权由服务端保存并受可选密码门禁保护。单实例SQLite+SSE，Docker volume持久化。生产扩容不是1.0目标。
 Tiptap按需加载；只安装所需节点，不引入完整文档套件。保留标题/段落/加粗/斜体/下划线/列表/链接/引用/简单表格/代码。粘贴去脚本、样式、图片、跟踪和危险URL。
 
 ## 模块边界
@@ -24,8 +24,8 @@ TypeScript strict；依赖精确锁在package-lock。单元/集成围绕权限�
 
 ## 视觉方向
 
-工作台优先，双空间符号作为品牌点。色板：纸白#FFFFFF、浅雾#F3F6FA、墨蓝#18253B、主蓝#3159DB、边线#DEE5F0、成功绿#28755D。中文PingFang SC/系统无衬线，代码SFMono/Consolas。左侧窄笔记列表，右侧安静编辑面；移动端折叠列表。选区工具或精简工具条，避免Word菜单与宣传卡片墙。真实安全能力用简明状态和详情说明，不把加密参数摆在主流程。
-评审：不采用巨幅营销首屏和通用卡片墙，打开直接看到编辑任务；两格符号是唯一主要品牌装饰。字体不拉远程资源。
+工作台优先，双空间符号作为品牌点。色板：纸白#FFFFFF、浅雾#F3F6FA、墨蓝#18253B、主蓝#3159DB、边线#DEE5F0、成功绿#28755D。中文PingFang SC/系统无衬线，代码SFMono/Consolas。当前视觉按Jian.la参考：首页长页、编辑页横向页签，主编辑区+300px右栏，900px以下自然单列。选区工具或精简工具条，避免Word菜单与宣传卡片墙。真实安全能力用简明状态和详情说明，不把加密参数摆在主流程。
+评审：用户已明确要求先对齐Jian.la功能、交互和风格，参考资料与逐项规范见JIANLA-PARITY.md；保留2Space身份。字体不拉远程资源。
 
 ## Web阅读基线（web-reading-v1，2026-10-29批准）
 
@@ -43,7 +43,7 @@ TypeScript strict；依赖精确锁在package-lock。单元/集成围绕权限�
 | 文档/弹窗标题              | title                     | 24px / 1.35–1.75 | 600                                                          |
 | 展示标题                   | display / display-compact | 32–48px / 1.35   | 600；窄屏32px                                                |
 
-12px白名单只有：`.sidebar-heading > span`（笔记数量）、`.page-number`（笔记序号）、`.character-count`（字符计数）、`.site-footer .version`（版本号）。笔记摘要、权限、到期、连接与保存状态、删除风险不在清单。没有其他字号例外。笔记列表标题/摘要允许省略号，完整标题在文档标题输入框、正文在编辑区可读；代码保留缩进，允许局部横向滚动且可键盘聚焦。
+12px白名单只有：`.sidebar-heading > span`（笔记数量）、`.page-number`（笔记序号）、`.character-count`（字符计数）、`.site-footer .version`、`.home-footer .version`、`.board-footer .version`（版本号）。笔记摘要、权限、到期、连接与保存状态、删除风险不在清单。没有其他字号例外。笔记列表标题/摘要允许省略号，完整标题在文档标题输入框、正文在编辑区可读；代码保留缩进，允许局部横向滚动且可键盘聚焦。
 
 唯一字号与字体值来源是 `apps/web/src/tokens.css`，组件样式在style.css引用语义Token。颜色使用主文字、次要文字、成功、危险、警告、动作等角色；次要文字仍须4.5:1。背景、边线与品牌风格保留。用户富文本的语义结构不改写；自动样式检查使用合成内容，不能据此声称所有用户内容均已验证。
 
@@ -51,7 +51,8 @@ TypeScript strict；依赖精确锁在package-lock。单元/集成围绕权限�
 
 首次运行：`npm ci`，`npx playwright install chromium`。Linux CI使用 `npx playwright install --with-deps chromium`。浏览器与axe是开发依赖，不进入生产运行包。
 
-- `npm run design:check`：静态检查字号Token、16/14/12基准、禁止字号!important与禁用缩放。
+- `npm run design:check`：静态检查字号Token、16/14/12基准、禁止字号!important与禁用缩放，并执行受控界面文案检查。
+- `npm run test:parity`：随机端口和临时库验证public/private、密码、永久/13档、排序与统计，不操作3210。
 - `npm run test:visual`：静态检查、构建、隔离本地服务、实际计算样式/字号/行高/字重/溢出检查、axe WCAG A/AA规则扫描及截图采集。服务监听随机loopback端口、临时数据库，不操作3210生产容器或现有笔记；结束关闭浏览器和服务并清理临时数据库。
 - 脚本覆盖1280/390/320px的欢迎页、工作台、安全/分享/打开弹窗；桌面200%根字体及文字间距覆盖；桌面/手机只读、离线保存失败、冲突；手机不可用空间。离线为浏览器断网，冲突由合成409响应触发真实客户端处理；不可用空间由真实404触发同一过期/撤销提示，不冒称自然到期。
 - axe扫描包括文字对比度等可自动判断项，失败阻止CI通过；没有整页禁用规则。需要人工判断的axe incomplete结果也写入报告供审查，不能据自动零违规宣称全站WCAG AA合规。
@@ -60,4 +61,4 @@ TypeScript strict；依赖精确锁在package-lock。单元/集成围绕权限�
 
 截图采集是审查证据，不是像素差异基准。本试点不提交自动生成截图，避免跨OS字体差异产生误报；后续如需像素回归，应固定OS/字体/浏览器，人工批准基准及更新。禁止靠改基准或增加宽泛豁免让失败转绿。
 
-桌面工作台高度回归：宽≥901px且高≥650px时，工作台占用视口剩余空间，编辑内容/侧栏内部滚动，底部保存状态必须在视口内。移动端和短窗口允许自然页面滚动。浏览器脚本还覆盖1355×1344、1280×900、1024×768的真实创建提示+空白/长文，不能只检查横向溢出；禁止通过缩小字号修复高度问题。
+当前参考复刻使用自然页面滚动，替代此前100dvh内部滚动结构；宽度、文字、焦点与截图门禁继续保留。浏览器脚本还覆盖1355×1344、1280×900、1024×768的真实创建提示+空白/长文，不能只检查横向溢出；禁止通过缩小字号修复高度问题。

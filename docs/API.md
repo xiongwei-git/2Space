@@ -1,5 +1,7 @@
 # API v1 与 v2 增量契约
 
+> 当前增量基线：2026-10-29用户明确选择新建空间凭名称查看和修改、密码可选。新public默认永久，`?readonly`仅页面模式；旧private空间和旧链接保持原权限与加密边界。最新需求、API和验收范围见[JIANLA-PARITY.md](JIANLA-PARITY.md)，下文原私密模式设计仍适用于旧空间。
+
 权威类型：packages/shared/src/index.ts。JSON输入只接受契约字段并校验类型/上限。
 Bearer使用32字节随机值base64url；服务端仅保存哈希。创建空间由客户端生成ownerToken；服务端生成spaceId。
 EncryptedPayload.iv/ciphertext统一base64url无padding，必须canonical，IV解码12字节，ciphertext解码16–400000字节。

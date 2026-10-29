@@ -4,6 +4,7 @@ export class RequestError extends Error {
     public status: number,
     public code: string,
     message: string,
+    public spaceId?: string,
   ) {
     super(message);
   }
@@ -35,6 +36,7 @@ export async function request<T>(
         response.status,
         data?.error?.code || "NETWORK_ERROR",
         userErrorMessage(data?.error?.code),
+        typeof data?.spaceId === "string" ? data.spaceId : undefined,
       );
     }
     if (response.status === 204) return undefined as T;
@@ -55,7 +57,7 @@ export async function subscribe(
   while (!signal.aborted) {
     try {
       const res = await fetch(`/api/spaces/${spaceId}/events`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         signal,
         cache: "no-store",
       });

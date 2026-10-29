@@ -1,5 +1,7 @@
 # Named spaces and one-click sharing · v2 additive contract
 
+> 当前增量基线：2026-10-29用户明确选择新建空间凭名称查看和修改、密码可选。新public默认永久，`?readonly`仅页面模式；旧private空间和旧链接保持原权限与加密边界。最新需求、API和验收范围见[JIANLA-PARITY.md](JIANLA-PARITY.md)，下文原私密模式设计仍适用于旧空间。
+
 2026-10-29：用户要求空间先命名（默认随机/允许填写）、缩短链接、分享更直接。保留已验收UI、web-reading-v1、端到端加密和旧数据/链接；不部署公网。
 
 ## 用户流程

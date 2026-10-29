@@ -15,9 +15,11 @@
     "start": "npm run start -w @2space/server",
     "format": "prettier --write \"apps/**/*.{ts,tsx,css,json,html}\" \"packages/**/*.{ts,json}\" \"scripts/*.mjs\" \"docs/**/*.md\" \"*.{json,md,yaml}\" \".github/workflows/*.yml\"",
     "format:check": "prettier --check \"apps/**/*.{ts,tsx,css,json,html}\" \"packages/**/*.{ts,json}\" \"scripts/*.mjs\" \"docs/**/*.md\" \"*.{json,md,yaml}\" \".github/workflows/*.yml\"",
-    "design:check": "node scripts/check-design.mjs",
+    "design:check": "node scripts/check-design.mjs && npm run copy:check",
     "test:visual": "npm run design:check && npm run build && node scripts/visual-acceptance.mjs",
-    "test:links": "npm run build -w @2space/server && node scripts/short-links-acceptance.mjs"
+    "test:links": "npm run build -w @2space/server && node scripts/short-links-acceptance.mjs",
+    "copy:check": "node scripts/check-copy.mjs",
+    "test:parity": "npm run build -w @2space/server && node scripts/reference-parity.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
