@@ -70,6 +70,13 @@ export default function Editor({
     if (editor) setEditorReadOnly(editor, readOnly);
   }, [editor, readOnly]);
   if (!editor) return <div className="editor-loading">正在打开笔记…</div>;
+  // An empty code block (or heading/list) is intentional structure, not the
+  // untouched text canvas. Never paint the text hint over its NodeView controls.
+  const showTextHint =
+    !readOnly &&
+    editor.isEmpty &&
+    editor.state.doc.childCount === 1 &&
+    editor.state.doc.firstChild?.type.name === "paragraph";
   const tool = (
     label: string,
     title: string,
@@ -147,7 +154,7 @@ export default function Editor({
       )}
       <div className="editor-content">
         <EditorContent editor={editor} />
-        {!readOnly && editor.isEmpty && (
+        {showTextHint && (
           <div className="editor-placeholder" aria-hidden="true">
             在这里粘贴文字，或开始输入。代码可以放进「代码块」。
           </div>

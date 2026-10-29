@@ -235,7 +235,7 @@ async function audit(
           ".sidebar-heading > span,.page-number,.character-count,.site-footer .version,.board-footer .version,.home-footer .version",
         );
         const isBody = el.closest(
-          ".hero-sub,.hero-promise,.demo-document p,.demo-document li,.format-sample p,.privacy-callout p,.section-head p,.step p,.feature p,.case p,.faq-list p,.support-card p:not(.support-note),.home-footer p,.preview-paper p,.editor-placeholder,.tiptap p,.tiptap li,.tiptap pre,.modal p:not(.muted),.modal li,.conflict-banner p",
+          ".hero-sub,.hero-promise,.demo-document p,.demo-document li,.format-sample p,.privacy-callout p,.section-head p,.step p,.feature p,.case p,.usage-topic dd,.support-card p:not(.support-note),.home-footer p,.preview-paper p,.editor-placeholder,.tiptap p,.tiptap li,.tiptap pre,.modal p:not(.muted),.modal li,.conflict-banner p",
         );
         const min = (isBody ? 16 : isMeta ? 12 : 14) * scale;
         if (size + 0.1 < min) failures.push(`${cls}: ${size}px < ${min}px`);
@@ -595,7 +595,17 @@ try {
       "六项功能",
     );
     assert.equal(await page.locator("#cases .case").count(), 4, "四种场景");
-    assert.equal(await page.locator("#faq details").count(), 8, "八项FAQ");
+    assert.equal(
+      await page.locator("#faq .usage-topic").count(),
+      3,
+      "使用小抄按三个使用时机组织",
+    );
+    assert.equal(await page.locator("#faq dt").count(), 6, "六个具体疑问");
+    assert.equal(
+      await page.locator("#faq dd:visible").count(),
+      6,
+      "答案直接可读，无需逐个展开",
+    );
     if (label === "desktop") {
       const hero = await page.locator(".hero-layout").evaluate((el) => {
         const copy = el.querySelector(".hero-copy").getBoundingClientRect();
@@ -637,9 +647,6 @@ try {
       await page.getByRole("button", { name: /进入剪贴板/ }).waitFor();
     }
     await audit(page, `${label}-reference-home`);
-    await page
-      .locator("#faq details")
-      .evaluateAll((elements) => elements.forEach((el) => (el.open = true)));
     await page.getByText("隐私政策", { exact: true }).click();
     await page.getByText("使用条款", { exact: true }).click();
     await audit(page, `${label}-reference-faq-privacy`);
@@ -675,6 +682,57 @@ try {
       "空白可编辑页有视觉占位",
     );
     await audit(page, `${label}-reference-created`, { editor: true });
+    stage = `${label}-empty-code-block`;
+    await page.getByRole("button", { name: "代码块", exact: true }).click();
+    assert.equal(
+      await page.locator(".code-block-view").count(),
+      1,
+      "空白页可直接创建代码块",
+    );
+    assert.equal(
+      await page.locator(".editor-placeholder").count(),
+      0,
+      "空代码块不显示普通正文占位，避免与代码工具栏重叠",
+    );
+    await audit(page, `${label}-empty-code-block`, { editor: true });
+    await page.getByRole("button", { name: "代码块", exact: true }).click();
+    assert.equal(
+      await page.locator(".code-block-view").count(),
+      0,
+      "切回普通段落",
+    );
+    assert.equal(
+      await page.locator(".editor-placeholder").count(),
+      1,
+      "恢复单个空段落时重新显示占位",
+    );
+    await page.getByRole("button", { name: "代码块", exact: true }).click();
+    await page.locator(".tiptap").press("a");
+    assert.equal(
+      await page
+        .locator(".code-block-view code[data-node-view-content]")
+        .textContent(),
+      "a",
+      "代码块接收真实键盘输入",
+    );
+    await page.locator(".tiptap").press("Backspace");
+    assert.equal(
+      await page.locator(".editor-placeholder").count(),
+      0,
+      "删空代码后正文占位仍不显示",
+    );
+    await page.getByRole("button", { name: "退出代码块", exact: true }).click();
+    assert.equal(
+      await page.locator(".tiptap > p").count(),
+      1,
+      "退出代码块得到普通段落",
+    );
+    assert.equal(
+      await page.locator(".editor-placeholder").count(),
+      0,
+      "保留空代码块的结构化文档不显示全局占位",
+    );
+
     await page
       .locator(".tiptap")
       .fill("自然滚动长文：正文保持16px，不为高度缩小字体。\n".repeat(100));
