@@ -274,10 +274,10 @@ export default function Home({
                 <div className="demo-document">
                   <span className="demo-device-label">在电脑上放下</span>
                   <h2>周末出发</h2>
-                  <p>周六 09:30，南站见。</p>
+                  <p>周五 18:30，南站见。</p>
                   <ul>
-                    <li>带好相机和充电线</li>
-                    <li>午餐试试那家面馆</li>
+                    <li>去吃小厨娘</li>
+                    <li>然后百家湖逛逛</li>
                   </ul>
                   <div className="demo-saved">
                     <span aria-hidden="true">✓</span>
@@ -292,10 +292,10 @@ export default function Home({
                 </div>
                 <div className="demo-document">
                   <h2>周末出发</h2>
-                  <p>周六 09:30，南站见。</p>
+                  <p>周五 18:30，南站见。</p>
                   <ul>
-                    <li>带好相机和充电线</li>
-                    <li>午餐试试那家面馆</li>
+                    <li>去吃小厨娘</li>
+                    <li>然后百家湖逛逛</li>
                   </ul>
                 </div>
               </div>
