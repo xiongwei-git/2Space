@@ -367,7 +367,15 @@ export default function App() {
     accessRef.current = a;
     setAccess(a);
     setFatal("");
-    setStatus(a.role === "reader" || a.viewOnly ? "仅查看" : "已保存");
+    setStatus(
+      a.role === "reader" || a.viewOnly
+        ? "仅查看"
+        : conflictRef.current.size
+          ? "其他设备也有修改，请选择要保留的内容"
+          : dirty.current.size
+            ? "有修改尚未保存"
+            : "已保存",
+    );
     if (initialView) await decodeSpace(initialView, a, true);
     else await refresh(true, a);
     if (accessRef.current?.id !== a.id) return;

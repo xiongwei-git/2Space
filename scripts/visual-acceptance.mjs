@@ -6,6 +6,7 @@ import {
   randomBytes,
   randomUUID,
   createCipheriv,
+  createDecipheriv,
   pbkdf2Sync,
   hkdfSync,
 } from "node:crypto";
@@ -135,7 +136,8 @@ async function audit(
           s.display !== "none"
         );
       };
-      const items = [];
+      const items = [],
+        geometry = [];
       const rgba = (value) => {
         const numbers = value.match(/[\d.]+/g)?.map(Number);
         if (value.startsWith("color(srgb ") && numbers?.length >= 3)
@@ -300,6 +302,31 @@ async function audit(
       }
       if (document.documentElement.scrollWidth > innerWidth + 1)
         failures.push("页面横向溢出");
+      if (editor && !modal) {
+        for (const selector of [
+          ".board-sidebar > .card",
+          ".qr-wrap",
+          ".qr-box",
+          ".qr-box .qr",
+          ".qr-box .link",
+          ".qr-box .link input",
+          ".qr-box .link button",
+        ]) {
+          for (const element of document.querySelectorAll(selector)) {
+            const rect = element.getBoundingClientRect(),
+              parent = element.parentElement.getBoundingClientRect();
+            geometry.push({
+              selector,
+              width: rect.width,
+              parentWidth: parent.width,
+              leftOverflow: parent.left - rect.left,
+              rightOverflow: rect.right - parent.right,
+            });
+            if (rect.left < parent.left - 1 || rect.right > parent.right + 1)
+              failures.push(`${selector}: 元素超出父容器`);
+          }
+        }
+      }
       for (const pre of scope.querySelectorAll(".tiptap pre")) {
         if (getComputedStyle(pre).whiteSpace !== "pre")
           failures.push("编辑器代码格式被换行样式覆盖");
@@ -337,7 +364,7 @@ async function audit(
             failures.push("顶部动作在初始视口不可达");
         }
       }
-      return { failures, items };
+      return { failures, items, geometry };
     },
     { editor, modal, scale },
   );
@@ -663,6 +690,13 @@ try {
         editor: true,
         scale: 2,
       });
+      await page.addStyleTag({
+        content: ':root { --font-family-body: "Courier New", monospace; }',
+      });
+      await audit(page, "desktop-reference-wide-text-200", {
+        editor: true,
+        scale: 2,
+      });
     }
     await context.close();
   }
@@ -920,6 +954,130 @@ try {
     modal: true,
   });
   await passwordContext.close();
+  stage = "reference-dirty-lock-recovery";
+  const dirtyName = `dirty-lock-${randomBytes(4).toString("hex")}`,
+    dirtyId = randomUUID(),
+    dirtyPassword = `synthetic-${randomUUID()}`;
+  const dirtySpace = await api(address, "/spaces", {
+    method: "POST",
+    body: {
+      accessMode: "public",
+      name: dirtyName,
+      publicKey: key.toString("base64url"),
+      ownerToken: randomBytes(32).toString("base64url"),
+      page: { id: dirtyId, payload: payload("服务器原稿") },
+    },
+    status: 201,
+  });
+  await api(address, `/spaces/${dirtySpace.id}/password`, {
+    method: "POST",
+    body: { password: dirtyPassword },
+  });
+  const dirtyContext = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      reducedMotion: "reduce",
+    }),
+    dirtyPage = await dirtyContext.newPage();
+  await dirtyPage.clock.install();
+  await dirtyPage.goto(`${address}/${dirtyName}`);
+  await dirtyPage.getByLabel("空间密码", { exact: true }).fill(dirtyPassword);
+  await dirtyPage
+    .getByRole("button", { name: "打开剪贴板", exact: true })
+    .click();
+  await workspace(dirtyPage);
+  const storedBefore = await dirtyPage.evaluate(
+    async (id) => (await fetch(`/api/spaces/${id}`)).json(),
+    dirtySpace.id,
+  );
+  const dirtyText = "自动锁后待保存的合成正文，必须保留本机修改。";
+  await dirtyContext.setOffline(true);
+  await dirtyPage.locator(".tiptap").fill(dirtyText);
+  await dirtyPage.clock.runFor(650);
+  await dirtyPage.locator(".save-state.failed").waitFor();
+  await dirtyPage.clock.runFor(180001);
+  await dirtyPage
+    .getByRole("dialog", { name: "会话超时", exact: true })
+    .waitFor();
+  await dirtyPage.clock.runFor(5001);
+  await dirtyPage.getByLabel("空间密码", { exact: true }).waitFor();
+  await dirtyContext.setOffline(false);
+  let resumedWrites = 0;
+  dirtyPage.on("request", (request) => {
+    if (
+      request.method() === "PUT" &&
+      new URL(request.url()).pathname ===
+        `/api/spaces/${dirtySpace.id}/pages/${dirtyId}`
+    )
+      resumedWrites++;
+  });
+  await dirtyPage.getByLabel("空间密码", { exact: true }).fill(dirtyPassword);
+  await dirtyPage
+    .getByRole("button", { name: "打开剪贴板", exact: true })
+    .click();
+  await workspace(dirtyPage);
+  await dirtyPage
+    .locator(".save-state")
+    .filter({ hasText: /^有修改尚未保存$/ })
+    .waitFor();
+  assert.ok(
+    (await dirtyPage.locator(".tiptap").innerText()).includes(dirtyText),
+    "不刷新解锁保留本机未保存内容",
+  );
+  assert.equal(resumedWrites, 0, "解锁不得偷偷自动补交");
+  const storedAfterUnlock = await dirtyPage.evaluate(
+    async (id) => (await fetch(`/api/spaces/${id}`)).json(),
+    dirtySpace.id,
+  );
+  assert.equal(
+    storedAfterUnlock.pages[0].revision,
+    storedBefore.pages[0].revision,
+    "解锁不改变服务器版本",
+  );
+  assert.ok(
+    JSON.stringify(storedAfterUnlock.pages[0].payload) ===
+      JSON.stringify(storedBefore.pages[0].payload),
+    "服务端仍为原稿",
+  );
+  await audit(dirtyPage, "mobile-reference-dirty-after-unlock", {
+    editor: true,
+  });
+  await dirtyPage.locator(".format-shortcuts summary").click();
+  await dirtyPage
+    .getByRole("button", { name: "立即保存", exact: true })
+    .click();
+  await saved(dirtyPage);
+  const storedAfterSave = await dirtyPage.evaluate(
+    async (id) => (await fetch(`/api/spaces/${id}`)).json(),
+    dirtySpace.id,
+  );
+  const encryptedBytes = Buffer.from(
+      storedAfterSave.pages[0].payload.ciphertext,
+      "base64url",
+    ),
+    decipher = createDecipheriv(
+      "aes-256-gcm",
+      key,
+      Buffer.from(storedAfterSave.pages[0].payload.iv, "base64url"),
+    );
+  decipher.setAuthTag(encryptedBytes.subarray(-16));
+  const persistedDocument = JSON.parse(
+    Buffer.concat([
+      decipher.update(encryptedBytes.subarray(0, -16)),
+      decipher.final(),
+    ]).toString(),
+  );
+  assert.ok(
+    persistedDocument.text.includes(dirtyText),
+    "手动保存后服务器确实含本机修改",
+  );
+  assert.equal(
+    storedAfterSave.pages[0].revision,
+    storedBefore.pages[0].revision + 1,
+    "仅手动保存增加一次版本",
+  );
+  assert.equal(resumedWrites, 1, "只发一次显式保存");
+  await audit(dirtyPage, "mobile-reference-dirty-after-save", { editor: true });
+  await dirtyContext.close();
   // Legacy private links keep real server-side owner/reader boundaries.
   for (const [label, width] of [
     ["desktop", 1280],

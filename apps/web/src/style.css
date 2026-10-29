@@ -1142,10 +1142,11 @@ pre:focus-visible,
 }
 .qr-wrap {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
 }
 .qr-box {
+  min-width: 0;
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 11px;
