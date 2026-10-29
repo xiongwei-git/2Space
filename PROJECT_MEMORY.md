@@ -98,3 +98,9 @@ T10/T11/T12已交付并停写。统一BrandMark恢复f8962f5双格几何，Home/
 ### 云端重复检查的测试选区同步
 
 787c3d8的PR Linux CI全项成功，同代码push CI在新增代码setup某wait超时。旧artifact无该setup失败截图，不能确认具体等待点。交付任务12次局部探针均观察到DOM Range已在首块、PM模型选区尚未同步；现仅在测试准备阶段用Tiptap测试挂载设置选区并核对DOM/model/view焦点，再发送真实Tab/ShiftTab，原功能断言不变。增加细分阶段与失败脱敏截图/布尔诊断；最新本地67再次通过。未改产品或3210，最终两条Linux结果以新测试提交为准。
+
+### 首页导航首次点击修复
+
+用户报告顶部“核心功能”等首次点击仅抖动。实际复现：首页hashchange误触发私密能力链接的整页reload。App改为事件发生时读取当前pathname，仅非首页保留reload，兼容首页创建空间后history.replaceState而不重挂载。新增真实浏览器断言：四个主导航首次点击均滚入目标、零文档导航请求；旧实现先失败证实回归有效。未调整视觉样式或API。
+
+本地Docker已更新，更新前在线SQLite备份及旧镜像保留于output/backups/before-home-navigation-1793256693；16空间/20页/2分享全记录摘要更新前后一致。typecheck、50项单元测试、23项Docker冒烟通过；67组完整浏览器回归通过（含新增四个首页锚点断言与私密owner→reader切换）。

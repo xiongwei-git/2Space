@@ -596,6 +596,37 @@ try {
     );
     assert.equal(await page.locator("#cases .case").count(), 4, "四种场景");
     assert.equal(await page.locator("#faq details").count(), 8, "八项FAQ");
+    if (label === "desktop") {
+      let documentLoads = 0;
+      page.on("request", (request) => {
+        if (
+          request.isNavigationRequest() &&
+          request.frame() === page.mainFrame()
+        )
+          documentLoads++;
+      });
+      for (const [name, id] of [
+        ["核心功能", "features"],
+        ["使用场景", "cases"],
+        ["常见问题", "faq"],
+        ["♥ 支持我们", "support"],
+      ]) {
+        await page
+          .getByRole("navigation", { name: "主导航" })
+          .getByRole("link", { name, exact: true })
+          .click();
+        await page.waitForFunction((id) => {
+          const top = document.getElementById(id).getBoundingClientRect().top;
+          return top >= -2 && top < window.innerHeight / 2;
+        }, id);
+        assert.equal(documentLoads, 0, `${name}首次点击不刷新页面`);
+      }
+      await page
+        .getByRole("link", { name: "2Space 首页", exact: true })
+        .first()
+        .click();
+      await page.getByRole("button", { name: /进入剪贴板/ }).waitFor();
+    }
     await audit(page, `${label}-reference-home`);
     await page
       .locator("#faq details")

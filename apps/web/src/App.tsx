@@ -547,7 +547,11 @@ export default function App() {
   useEffect(() => {
     // A capability change must discard the previous role, fatal state and SSE session.
     // Reload also preserves the existing beforeunload warning for unsaved drafts.
-    const handler = () => location.reload();
+    const handler = () => {
+      // Home fragments are section anchors, not workspace capabilities. Read the
+      // current path because creating a workspace can replace it without a mount.
+      if (location.pathname !== "/") location.reload();
+    };
     window.addEventListener("hashchange", handler);
     return () => window.removeEventListener("hashchange", handler);
   }, []);
