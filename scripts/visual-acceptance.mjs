@@ -32,9 +32,9 @@ async function report(status) {
     JSON.stringify(
       {
         baseline: "web-reading-v1",
-        reference: "jianla-parity-v3",
+        reference: "2space-product-redesign-v1",
         layoutPolicy:
-          "natural-page-scroll; previous desktop-100dvh gate superseded by explicit reference-copy requirement",
+          "2space split introduction and name entry; writing canvas plus utility rail; narrow single column; natural page scroll",
         startedAt,
         status,
         stage,
@@ -235,7 +235,7 @@ async function audit(
           ".sidebar-heading > span,.page-number,.character-count,.site-footer .version,.board-footer .version,.home-footer .version",
         );
         const isBody = el.closest(
-          ".hero-sub,.section-head p,.step p,.feature p,.case p,.faq-list p,.support-card p:not(.support-note),.home-footer p,.preview-paper p,.editor-placeholder,.tiptap p,.tiptap li,.tiptap pre,.modal p:not(.muted),.modal li,.conflict-banner p",
+          ".hero-sub,.hero-promise,.demo-document p,.demo-document li,.format-sample p,.privacy-callout p,.section-head p,.step p,.feature p,.case p,.faq-list p,.support-card p:not(.support-note),.home-footer p,.preview-paper p,.editor-placeholder,.tiptap p,.tiptap li,.tiptap pre,.modal p:not(.muted),.modal li,.conflict-banner p",
         );
         const min = (isBody ? 16 : isMeta ? 12 : 14) * scale;
         if (size + 0.1 < min) failures.push(`${cls}: ${size}px < ${min}px`);
@@ -343,13 +343,13 @@ async function audit(
         const content = document.querySelector(".board-main");
         const sidebar = document.querySelector(".board-sidebar");
         if (!container || !header || !content || !sidebar)
-          failures.push("参考布局关键区域缺失");
+          failures.push("工作区关键区域缺失");
         else {
           const c = container.getBoundingClientRect(),
             h = header.getBoundingClientRect(),
             main = content.getBoundingClientRect(),
             side = sidebar.getBoundingClientRect();
-          if (c.width > 1101) failures.push("编辑页超出参考1100px容器");
+          if (c.width > 1181) failures.push("编辑页超出1180px内容容器");
           if (h.top < -1 || h.top > 40)
             failures.push("顶部动作未保持在页面开头");
           if (innerWidth > 900) {
@@ -358,7 +358,7 @@ async function audit(
           } else if (side.top < main.bottom - 1)
             failures.push("窄屏右栏没有改为下方单列");
           if (getComputedStyle(document.body).overflowY === "hidden")
-            failures.push("参考自然页面滚动被禁止");
+            failures.push("自然页面滚动被禁止");
           const topActions = header.querySelector(".actions");
           if (
             !topActions ||
@@ -597,6 +597,15 @@ try {
     assert.equal(await page.locator("#cases .case").count(), 4, "四种场景");
     assert.equal(await page.locator("#faq details").count(), 8, "八项FAQ");
     if (label === "desktop") {
+      const hero = await page.locator(".hero-layout").evaluate((el) => {
+        const copy = el.querySelector(".hero-copy").getBoundingClientRect();
+        const demo = el.querySelector(".transfer-demo").getBoundingClientRect();
+        return { copyRight: copy.right, demoLeft: demo.left };
+      });
+      assert.ok(
+        hero.copyRight <= hero.demoLeft,
+        "桌面名称入口与跨设备演示分栏",
+      );
       let documentLoads = 0;
       page.on("request", (request) => {
         if (
@@ -1085,7 +1094,7 @@ try {
   );
   await passwordPage.clock.runFor(180001);
   await passwordPage
-    .getByRole("dialog", { name: "会话超时", exact: true })
+    .getByRole("dialog", { name: "要继续使用吗？", exact: true })
     .waitFor();
   await audit(passwordPage, "mobile-reference-idle-countdown", { modal: true });
   await passwordPage.clock.runFor(5001);
@@ -1158,7 +1167,7 @@ try {
   await dirtyPage.locator(".save-state.failed").waitFor();
   await dirtyPage.clock.runFor(180001);
   await dirtyPage
-    .getByRole("dialog", { name: "会话超时", exact: true })
+    .getByRole("dialog", { name: "要继续使用吗？", exact: true })
     .waitFor();
   await dirtyPage.clock.runFor(5001);
   await dirtyPage.getByLabel("空间密码", { exact: true }).waitFor();
@@ -1208,6 +1217,11 @@ try {
     .getByRole("button", { name: "立即保存", exact: true })
     .click();
   await saved(dirtyPage);
+  assert.equal(
+    await dirtyPage.locator(".format-shortcuts").getAttribute("open"),
+    null,
+    "执行更多操作后收起菜单，不遮挡编辑工具",
+  );
   const storedAfterSave = await dirtyPage.evaluate(
     async (id) => (await fetch(`/api/spaces/${id}`)).json(),
     dirtySpace.id,

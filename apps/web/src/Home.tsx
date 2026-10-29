@@ -1,67 +1,88 @@
 import { useState } from "react";
+import "./home.css";
 import Icon from "./Icon.js";
 import { randomExperienceName } from "./view-model.js";
-import {
-  Brand,
-  BRAND_SLOGAN,
-  BRAND_PROMISE,
-  BRAND_DESCRIPTION,
-} from "./Brand.js";
+import { Brand, BRAND_SLOGAN } from "./Brand.js";
 export { Brand } from "./Brand.js";
+
 const features = [
-  ["globe", "免注册即用", "无需账号、无需安装，打开浏览器输入名称即用。"],
+  [
+    "globe",
+    "打开就能用",
+    "不用注册或安装。取个名称，就有一个随时能打开的地址。",
+  ],
   [
     "refresh",
-    "跨设备同步",
-    "手机、电脑、平板访问同一链接，文字随处可取、随处可改。",
+    "换台设备，接着用",
+    "打开同一个链接，查看、编辑和复制刚刚放下的内容。",
   ],
-  ["zap", "自动保存", "输入即保存，关闭前确认保存状态，也可一键下载TXT备份。"],
-  ["lock", "密码保护", "为整个剪贴板设置访问密码，让知道密码的人继续使用。"],
-  ["eye", "仅查看链接", "以仅查看模式展示内容，方便对方阅读和复制。"],
-  ["qr", "二维码分享", "可编辑、仅查看两组二维码，扫码即可打开。"],
+  ["zap", "写完自动保存", "不用寻找保存按钮。看到“已保存”，再放心关闭页面。"],
+  [
+    "lock",
+    "需要时加个密码",
+    "为整个剪贴板设置密码，其他设备输入密码后才能打开。",
+  ],
+  [
+    "eye",
+    "给对方一个阅读页面",
+    "仅查看链接方便阅读和复制，页面中不显示编辑工具。",
+  ],
+  ["qr", "扫一下，也能打开", "手机不方便输入链接时，用二维码接着看。"],
 ];
 const cases = [
   [
     "phone",
-    "手机 ⇄ 电脑互传文字",
-    "手机上复制的文字，换台设备打开同名剪贴板即可取用。",
+    "手机里的地址，电脑上用",
+    "把地址、路线或一段回复放下来，在另一台设备直接复制。",
   ],
-  ["code", "代码与配置中转", "命令、SQL、配置片段，保留缩进与换行。"],
-  ["list", "临时备忘与清单", "地址、购物清单、待办事项，收藏链接随时打开。"],
-  ["share", "分享内容给他人", "把链接或二维码发给对方，无需注册即可查看。"],
+  [
+    "code",
+    "一段代码，换个地方继续",
+    "命令、配置和代码片段保留缩进，不必重新整理。",
+  ],
+  [
+    "list",
+    "零散的事，先放在一起",
+    "清单、备忘和临时想法，可以分在不同记事本里。",
+  ],
+  [
+    "share",
+    "要给别人的内容，发个链接",
+    "一段说明或几份笔记，用同一个链接一起分享。",
+  ],
 ];
 const faqs = [
   [
     "2Space适合做什么？",
-    "需要在设备间带走一段文字、一份代码或网页片段时，给它取个名称，再从另一端打开。常用格式和代码缩进也能保留。",
+    "在手机、电脑和平板之间传文字、网页片段或代码，也可以临时记下内容，再把链接分享给别人。",
   ],
   [
     "打开之前，需要准备什么？",
-    "不需要。打开浏览器即可使用，无需安装客户端或插件。",
+    "有浏览器就可以。不用注册、安装客户端或添加插件。",
   ],
   [
     "2Space是免费的吗？",
-    "创建、编辑、密码保护、链接分享、二维码和文本下载均可直接使用。",
+    "创建剪贴板、编辑、设置密码、分享链接、扫码打开和下载文字都可以直接使用。",
   ],
   [
     "怎么在两台设备之间接着用？",
-    "在一台设备输入名称并粘贴内容，等待显示“已保存”，再在另一台设备打开相同链接即可查看和复制。",
+    "在第一台设备输入名称并粘贴内容，看到“已保存”后，在另一台设备打开相同链接，就能查看和复制。",
   ],
   [
     "别人能看到我的剪贴板内容吗？",
-    "新剪贴板知道名称即可查看和修改。请使用不易猜到的名称，并为需要限制访问的内容设置密码。仅查看链接只改变页面模式，知道名称的人仍可打开可编辑页面。旧的独立链接空间仍保留原有权限。",
+    "知道名称的人可以查看和修改。需要限制访问时，请设置密码。仅查看链接只提供阅读页面；知道名称的人仍能另行打开可编辑页面。原有独立链接继续保留原来的访问限制。",
   ],
   [
     "我的数据安全吗？",
-    "可以设置整个空间的访问密码。不要存放账号密码、银行卡号等高度敏感信息；使用完毕及时清空或删除。新剪贴板不是仅自己可见的保险箱。",
+    "密码可以限制其他人打开剪贴板，但请勿存放账号密码、银行卡号等高度敏感信息。重要内容另行备份。删除后，别人已经复制的内容也无法收回。",
   ],
   [
     "一个剪贴板最多能存多少内容？",
-    "每个空间最多6个记事本，单个记事本约200KB文字；格式较复杂时可用字数会减少。超出容量时会提示，请拆分保存。",
+    "最多6个记事本，每个约200KB文字。格式越复杂，可用字数越少；超出容量时会提示你拆分内容。",
   ],
   [
     "剪贴板内容会过期吗？",
-    "新剪贴板默认永久保留，可设置30分钟至3年的保留时长。每次保存内容会重新计时，打开查看不会延长保留时间。",
+    "默认永久保留，也可以选择30分钟至3年的保留时间。每次保存内容会重新计时；只打开查看，不会延长时间。到期后，整个剪贴板和其中的记事本都会删除。",
   ],
 ];
 interface Props {
@@ -119,167 +140,142 @@ export default function Home({
       </header>
       <main id="main">
         <section className="hero">
-          <div className="home-container">
-            <span className="hero-badge">✓ 免注册 · 无需下载客户端</span>
-            <h1 data-brand-slogan>{BRAND_SLOGAN}</h1>
-            <p className="hero-promise">{BRAND_PROMISE}</p>
-            <p className="hero-sub">{BRAND_DESCRIPTION}</p>
-            <form
-              className="form-card"
-              onSubmit={(event) => {
-                event.preventDefault();
-                lockedName ? onOpenCode() : onEnter(name);
-              }}
-            >
-              <label htmlFor={lockedName ? "spaceAccessCode" : "spaceName"}>
-                {lockedName
-                  ? `打开 ${lockedName}，请输入访问码`
-                  : "创建或打开你的剪贴板"}
-              </label>
-              {lockedName ? (
-                <input
-                  className="input"
-                  id="spaceAccessCode"
-                  value={accessCode}
-                  onChange={(e) => onCode(e.target.value)}
-                  placeholder="粘贴访问码或完整链接"
-                  autoComplete="off"
-                />
-              ) : (
-                <div className="input-wrap">
-                  <span className="prefix">2space.cn/</span>
-                  <input
-                    id="spaceName"
-                    value={name}
-                    onChange={(e) => onName(e.target.value)}
-                    maxLength={64}
-                    placeholder="例如：team-notes"
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                </div>
-              )}
-              <div className="form-actions">
-                <button className="btn primary" disabled={busy}>
-                  {busy
-                    ? "正在打开…"
-                    : lockedName
-                      ? "打开已有空间"
-                      : "进入剪贴板"}{" "}
-                  <span aria-hidden="true">→</span>
-                </button>
-              </div>
-              <p className="form-hint">
-                {lockedName ? (
-                  "请使用分享者提供的完整链接或访问码。"
-                ) : (
-                  <>
-                    没有想法？
-                    <button
-                      type="button"
-                      className="inline-button"
-                      onClick={() => onEnter(randomExperienceName())}
-                    >
-                      随机体验一个 →
-                    </button>
-                  </>
-                )}
+          <div className="home-container hero-layout">
+            <div className="hero-copy">
+              <h1 data-brand-slogan>{BRAND_SLOGAN}</h1>
+              <p className="hero-sub">
+                文字、代码、网页片段。放进同一个链接，换台设备接着用。
               </p>
-            </form>
-            <p className="public-rule">
-              知道名称的人可以查看和修改，设置密码可限制访问。
-            </p>
-            <div className="trust-chips">
-              <span>✓ 免注册即用</span>
-              <span>
-                <Icon name="lock" /> 可选密码保护
-              </span>
-              <span>
-                <Icon name="refresh" /> 跨设备同步
-              </span>
-              <span>
-                <Icon name="download" /> 文字与代码格式
-              </span>
+              <form
+                className="form-card"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  lockedName ? onOpenCode() : onEnter(name);
+                }}
+              >
+                <label htmlFor={lockedName ? "spaceAccessCode" : "spaceName"}>
+                  {lockedName
+                    ? `打开 ${lockedName}，请输入访问码`
+                    : "创建或打开你的剪贴板"}
+                </label>
+                {lockedName ? (
+                  <input
+                    className="input"
+                    id="spaceAccessCode"
+                    value={accessCode}
+                    onChange={(e) => onCode(e.target.value)}
+                    placeholder="粘贴访问码或完整链接"
+                    autoComplete="off"
+                  />
+                ) : (
+                  <div className="input-wrap">
+                    <span className="prefix">2space.cn/</span>
+                    <input
+                      id="spaceName"
+                      value={name}
+                      onChange={(e) => onName(e.target.value)}
+                      maxLength={64}
+                      placeholder="例如：team-notes"
+                      autoComplete="off"
+                      spellCheck={false}
+                    />
+                  </div>
+                )}
+                <div className="form-actions">
+                  <button className="btn primary" disabled={busy}>
+                    {busy
+                      ? "正在打开…"
+                      : lockedName
+                        ? "打开已有空间"
+                        : "进入剪贴板"}
+                  </button>
+                </div>
+                <p className="form-hint">
+                  {lockedName ? (
+                    "请使用分享者提供的完整链接或访问码。"
+                  ) : (
+                    <>
+                      不想起名？
+                      <button
+                        type="button"
+                        className="inline-button"
+                        onClick={() => onEnter(randomExperienceName())}
+                      >
+                        随机体验一个
+                      </button>
+                    </>
+                  )}
+                </p>
+              </form>
+              <p className="public-rule">
+                <Icon name="lock" />
+                知道名称的人可以查看和修改，设置密码可限制访问。
+              </p>
             </div>
+            <figure
+              className="transfer-demo"
+              aria-label="同一份内容在电脑和手机上打开的示意"
+            >
+              <div className="demo-desktop">
+                <div className="demo-window-bar">
+                  <Icon name="globe" />
+                  <span>2space.cn/travel-notes</span>
+                </div>
+                <div className="demo-document">
+                  <span className="demo-device-label">在电脑上放下</span>
+                  <h2>周末出发</h2>
+                  <p>周六 09:30，南站见。</p>
+                  <ul>
+                    <li>带好相机和充电线</li>
+                    <li>午餐试试那家面馆</li>
+                  </ul>
+                  <div className="demo-saved">
+                    <span aria-hidden="true">✓</span>
+                    已保存
+                  </div>
+                </div>
+              </div>
+              <div className="demo-phone">
+                <div className="demo-phone-top">
+                  <Icon name="phone" />
+                  <span>在手机上接着看</span>
+                </div>
+                <div className="demo-document">
+                  <h2>周末出发</h2>
+                  <p>周六 09:30，南站见。</p>
+                  <ul>
+                    <li>带好相机和充电线</li>
+                    <li>午餐试试那家面馆</li>
+                  </ul>
+                </div>
+              </div>
+              <figcaption className="demo-caption">
+                同一个链接，同一份内容。
+              </figcaption>
+            </figure>
           </div>
         </section>
         <section className="home-section" id="how">
-          <div className="home-container">
+          <div className="home-container how-layout">
             <div className="section-head">
-              <span className="kicker">快速上手</span>
-              <h2>给内容留个位置，只要三步</h2>
-              <p>取个名称，放下内容，换台设备接着用。</p>
+              <h2>从这里放下，到那里取用。</h2>
+              <p>不必给自己发消息，也不用新建一份长文档。</p>
             </div>
             <div className="steps">
               {[
                 [
-                  "clipboard",
                   "取一个名字",
-                  <>
-                    输入字母、数字、下划线或中划线名称，如
-                    <code>team-notes</code>，打开即得到专属地址。
-                  </>,
+                  "输入字母、数字、下划线或中划线。记住名称，也就记住了链接。",
                 ],
+                ["粘贴进去", "放下文字或代码，等页面显示“已保存”。"],
                 [
-                  "zap",
-                  "粘贴内容",
-                  <>
-                    把文字、代码或网页片段粘贴进编辑框，内容自动保存，无需手动点保存。
-                  </>,
+                  "换台设备打开",
+                  "输入相同地址，或扫描二维码，继续查看、复制和编辑。",
                 ],
-                [
-                  "phone",
-                  "随处访问",
-                  <>
-                    在其他设备打开相同链接，即可查看、复制；也可以分享链接或二维码。
-                  </>,
-                ],
-              ].map(([icon, title, body], index) => (
-                <article className="step" key={index}>
+              ].map(([title, body], index) => (
+                <article className="step" key={title}>
                   <span className="step-index" aria-hidden="true">
-                    0{index + 1}
-                  </span>
-                  <span className="feature-icon" aria-hidden="true">
-                    <Icon name={String(icon)} />
-                  </span>
-                  <h3>{title}</h3>
-                  <p>{body}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-        <section className="home-section" id="features">
-          <div className="home-container">
-            <div className="section-head">
-              <span className="kicker">核心功能</span>
-              <h2>传过去，也保留好用的样子</h2>
-              <p>少一点操作，让文字、代码和常用格式顺手到达。</p>
-            </div>
-            <div className="features">
-              {features.map(([icon, title, body]) => (
-                <article className="feature" key={title}>
-                  <span className="feature-icon" aria-hidden="true">
-                    <Icon name={String(icon)} />
-                  </span>
-                  <h3>{title}</h3>
-                  <p>{body}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-        <section className="home-section" id="cases">
-          <div className="home-container">
-            <div className="section-head">
-              <span className="kicker">使用场景</span>
-              <h2>从这一端，到你需要的那一端</h2>
-            </div>
-            <div className="cases">
-              {cases.map(([icon, title, body]) => (
-                <article className="case" key={title}>
-                  <span className="feature-icon" aria-hidden="true">
-                    <Icon name={String(icon)} />
+                    {index + 1}
                   </span>
                   <div>
                     <h3>{title}</h3>
@@ -290,71 +286,99 @@ export default function Home({
             </div>
           </div>
         </section>
-        <section className="home-section" id="compare">
-          <div className="home-container">
+        <section className="home-section" id="features">
+          <div className="home-container feature-layout">
             <div className="section-head">
-              <span className="kicker">找到顺手的方式</span>
-              <h2>不同工具，各有用处</h2>
+              <h2>把传内容这件事，做得简单一点。</h2>
+              <p>常用的功能都在手边，打开就知道怎么用。</p>
+            </div>
+            <div className="features">
+              {features.map(([icon, title, body]) => (
+                <article className="feature" key={title}>
+                  <span className="feature-icon" aria-hidden="true">
+                    <Icon name={icon} />
+                  </span>
+                  <div>
+                    <h3>{title}</h3>
+                    <p>{body}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+            <div className="privacy-callout">
+              <Icon name="lock" />
+              <div>
+                <h3>访问范围，说清楚。</h3>
+                <p>
+                  名称就是入口，知道名称的人可以查看和修改。需要限制访问时，先设置密码。仅查看链接方便阅读，不代表内容只有对方能看。
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+        <section className="home-section" id="compare">
+          <div className="home-container format-layout">
+            <div className="section-head">
+              <h2>一段文字，一份代码，都有合适的样子。</h2>
               <p>
-                沟通可以用聊天，长文可以用文档。只想把一段内容带到另一端时，就留给2Space。
+                复制来的常用格式可以保留。代码有自己的位置，缩进、换行也一起带过去。
               </p>
             </div>
-            <div
-              className="compare-wrap"
-              tabIndex={0}
-              role="region"
-              aria-label="功能对比表"
-            >
-              <table className="compare-table">
-                <caption>把内容带到另一端，你可以这样选</caption>
-                <thead>
-                  <tr>
-                    {[
-                      "能力",
-                      "2Space",
-                      "即时通讯软件",
-                      "系统剪贴板",
-                      "在线云文档",
-                    ].map((x) => (
-                      <th key={x} scope="col">
-                        {x}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    ["无需注册登录", "✓", "通常需要", "✓", "通常需要"],
-                    ["跨设备同步文字", "✓", "✓", "依系统而定", "✓"],
-                    ["专属链接直达", "✓", "依产品而定", "—", "✓"],
-                    ["访问密码", "✓", "依产品而定", "—", "依产品而定"],
-                    ["轻量临时中转", "✓", "✓", "✓", "✓"],
-                  ].map((row) => (
-                    <tr key={row[0]}>
-                      {row.map((cell, index) =>
-                        index === 0 ? (
-                          <th scope="row" key={index}>
-                            {cell}
-                          </th>
-                        ) : (
-                          <td key={index}>{cell}</td>
-                        ),
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <article className="format-sample format-prose">
+              <div className="format-label">
+                <Icon name="clipboard" />
+                文字与常用格式
+              </div>
+              <h3>把要点留清楚</h3>
+              <p>
+                标题、<strong>重点</strong>、列表和链接，粘贴后继续整理。
+              </p>
+              <ul>
+                <li>今天要处理的两件事</li>
+                <li>一段值得留下的网页摘录</li>
+              </ul>
+            </article>
+            <article className="format-sample format-code">
+              <div className="format-label">
+                <Icon name="code" />
+                代码与配置
+              </div>
+              <pre tabIndex={0} aria-label="代码格式示例">
+                <code>
+                  {
+                    'const space = "2space";\n\nfunction keepGoing(text) {\n  return text.trim();\n}'
+                  }
+                </code>
+              </pre>
+              <p>保留缩进，按语言高亮，也能直接复制原文。</p>
+            </article>
+          </div>
+        </section>
+        <section className="home-section" id="cases">
+          <div className="home-container cases-layout">
+            <div className="section-head">
+              <h2>手边的内容，随时有地方放。</h2>
             </div>
-            <p className="compare-note">
-              不同产品和系统能力有所差异，具体以所用版本为准。
-            </p>
+            <div className="cases">
+              {cases.map(([icon, title, body]) => (
+                <article className="case" key={title}>
+                  <span className="feature-icon" aria-hidden="true">
+                    <Icon name={icon} />
+                  </span>
+                  <div>
+                    <h3>{title}</h3>
+                    <p>{body}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
           </div>
         </section>
         <section className="home-section" id="faq">
-          <div className="home-container narrow">
+          <div className="home-container faq-layout">
             <div className="section-head">
-              <span className="kicker">常见问题</span>
-              <h2>使用之前，你可能想知道</h2>
+              <h2>还有几个问题。</h2>
+              <p>使用方式、保存时间和访问范围，在这里说清楚。</p>
             </div>
             <div className="faq-list">
               {faqs.map(([question, answer]) => (
@@ -369,34 +393,16 @@ export default function Home({
             </div>
           </div>
         </section>
-        <section className="home-section">
-          <div className="home-container">
-            <div className="cta">
-              <h2>给下一次复制，留一个空间</h2>
-              <p>选个名称，把现在用得上的内容放进来。</p>
-              <button
-                className="btn secondary"
-                onClick={() => onEnter(randomExperienceName())}
-              >
-                打开2Space →
-              </button>
-            </div>
-          </div>
-        </section>
         <section className="home-section" id="support">
-          <div className="home-container">
+          <div className="home-container support-layout">
             <div className="support-card">
-              <span className="support-icon" aria-hidden="true">
-                <Icon name="heart" />
-              </span>
-              <h2>把这份顺手，分享给朋友</h2>
-              <p>如果2Space让你少绕了一次路，也把它留给身边需要的人。</p>
+              <div>
+                <h2>顺手的话，也分享给朋友。</h2>
+                <p>把2Space的首页发给需要在设备间传文字的人。</p>
+              </div>
               <button className="btn primary" onClick={onSupport}>
                 ♥ 支持2Space
               </button>
-              <p className="support-note">
-                打开分享方式，复制首页链接或分享给朋友。
-              </p>
             </div>
           </div>
         </section>
@@ -405,14 +411,14 @@ export default function Home({
         <div className="home-container footer-grid">
           <div>
             <Brand />
-            <p>把常用的文字和代码留在这里，换台设备继续。</p>
+            <p>这边复制，那边就有。</p>
             <span className="version">v1.0</span>
           </div>
           <nav aria-label="产品导航">
-            <h2>产品</h2>
+            <h2>开始使用</h2>
             <a href="#features">核心功能</a>
             <a href="#cases">使用场景</a>
-            <a href="#compare">功能对比</a>
+            <a href="#compare">文字与代码</a>
             <a href="#faq">常见问题</a>
             <button
               className="inline-button"
@@ -422,7 +428,7 @@ export default function Home({
             </button>
           </nav>
           <div>
-            <h2>支持与条款</h2>
+            <h2>关于2Space</h2>
             <button className="inline-button" onClick={onSupport}>
               支持2Space
             </button>
@@ -432,7 +438,7 @@ export default function Home({
             >
               <summary>隐私政策</summary>
               <p>
-                新剪贴板凭名称即可读写；设置密码可限制访问。正文会保存在服务器，请勿存放高度敏感信息。旧独立链接空间保留原有访问限制。删除不能收回别人已复制的内容。
+                知道名称的人可以查看和修改；设置密码可限制访问。正文保存在服务器，请勿存放高度敏感信息。原有独立链接保留原来的访问限制。删除不能收回别人已复制的内容。
               </p>
             </details>
             <details>
@@ -444,10 +450,8 @@ export default function Home({
           </div>
         </div>
         <div className="home-container footer-bottom">
-          <span>
-            © {new Date().getFullYear()} 2Space · 这边复制，那边就有。
-          </span>
-          <span>随手放下，随时取用。重要内容请另行备份。</span>
+          <span>© {new Date().getFullYear()} 2Space</span>
+          <span>重要内容，请另行备份。</span>
         </div>
       </footer>
     </>

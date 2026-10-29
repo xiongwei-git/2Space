@@ -149,7 +149,7 @@ export default function Editor({
         <EditorContent editor={editor} />
         {!readOnly && editor.isEmpty && (
           <div className="editor-placeholder" aria-hidden="true">
-            粘贴文字或代码。点击「代码块」可保留缩进并高亮显示。
+            在这里粘贴文字，或开始输入。代码可以放进「代码块」。
           </div>
         )}
       </div>

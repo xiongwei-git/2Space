@@ -1334,7 +1334,7 @@ export default function App() {
       }
     } catch (error) {
       if (!(error instanceof DOMException && error.name === "AbortError"))
-        setNotice("分享未完成，可复制右侧链接。");
+        setNotice("分享未完成，请复制二维码下方的链接。");
     }
   }
   async function supportShare(copyOnly = false) {
@@ -1454,7 +1454,7 @@ export default function App() {
                 : unlock
                   ? "打开受保护链接"
                   : countdown !== null
-                    ? "会话超时"
+                    ? "要继续使用吗？"
                     : modal === "deletePage"
                       ? "删除记事本"
                       : modal === "password"
@@ -1535,9 +1535,9 @@ export default function App() {
               </form>
             ) : countdown !== null ? (
               <>
-                <h2>会话超时</h2>
-                <p>长时间无操作，需要重新输入密码。</p>
-                <p>{countdown}秒后退出</p>
+                <h2>要继续使用吗？</h2>
+                <p>有一段时间没有操作，即将锁定内容。</p>
+                <p>{countdown}秒后锁定</p>
                 <button
                   className="btn primary"
                   onClick={() => setCountdown(null)}
@@ -1577,14 +1577,14 @@ export default function App() {
                   aria-label="新密码"
                   type="password"
                   autoComplete="new-password"
-                  placeholder="输入新密码（留空表示移除密码）"
+                  placeholder="输入密码"
                   value={spacePassword}
                   onChange={(event) => setSpacePassword(event.target.value)}
                 />
                 <p className="modal-desc">
                   {space?.passwordProtected
-                    ? "输入新密码即可更改，留空保存可移除密码。"
-                    : "设置后，其他设备需要输入密码才能打开。"}
+                    ? "输入新密码可更换密码；留空后保存，将取消密码保护。"
+                    : "设置后，每台设备打开时都需要输入密码。请自行记住，密码无法找回。"}
                 </p>
                 <div className="foot">
                   <button
@@ -1608,7 +1608,7 @@ export default function App() {
               >
                 <h2>设置保留时间</h2>
                 <p className="modal-desc">
-                  以上次保存内容时间为起点，到期自动删除整个剪贴板（含全部记事本）。每次保存内容会重新计时，打开查看不会续期。
+                  每次保存内容后重新计时；仅打开查看不会延长时间。到期会删除所有记事本，无法恢复。
                 </p>
                 <select
                   className="input"
@@ -1660,7 +1660,7 @@ export default function App() {
             ) : modal === "support" ? (
               <>
                 <h2>支持2Space</h2>
-                <p>把这个方便的小工具推荐给朋友，也是对2Space的支持。</p>
+                <p>如果2Space对你有用，把它分享给下一位需要的人。</p>
                 <div className="support-actions">
                   <button
                     className="btn primary"
@@ -1675,20 +1675,18 @@ export default function App() {
                     分享给朋友
                   </button>
                 </div>
-                <p className="modal-desc">
-                  也可以把首页加入浏览器收藏，下次随手打开。
-                </p>
+                <p className="modal-desc">收藏首页，下次需要时直接打开。</p>
               </>
             ) : modal === "privacy" ? (
               <>
                 <h2>隐私说明</h2>
                 <p>
                   {isPublic
-                    ? "知道名称的人可以查看和修改此剪贴板，设置密码可限制访问。仅查看链接只改变页面模式。"
-                    : "此空间继续使用原有链接权限，仅查看链接不能修改内容。请妥善保存可编辑链接，丢失后无法找回。"}
+                    ? "知道名称的人可以查看和修改此剪贴板，设置密码可限制访问。仅查看链接方便阅读，知道名称的人仍可打开可编辑页面。"
+                    : "拿到可编辑链接的人可以修改全部内容；仅查看链接只能阅读和复制。请保存好可编辑链接，丢失后无法找回。"}
                 </p>
                 <p>
-                  不要存放账号密码、银行卡号等高度敏感信息。删除不能收回别人已经复制的内容，重要内容请另行备份。
+                  请勿存放账号密码、银行卡号等敏感信息。删除或关闭分享，无法收回别人已复制的内容。重要内容请另行备份。
                 </p>
                 {!isPublic && !reader && (
                   <button
@@ -1713,7 +1711,7 @@ export default function App() {
             ) : modal === "share" ? (
               <>
                 <h2>仅查看分享</h2>
-                <p>分享整个空间的所有记事本，对方只能查看和复制。</p>
+                <p>此链接包含所有记事本，对方可以阅读和复制，不能修改。</p>
                 <div role="status" className="share-status">
                   {shareMessage || "正在准备链接…"}
                 </div>
@@ -1760,7 +1758,9 @@ export default function App() {
                   >
                     关闭分享
                   </button>
-                  <p>更新或关闭后旧链接将失效；对方已复制的内容无法收回。</p>
+                  <p>
+                    更换或关闭分享后，旧链接不能再打开。别人已复制的内容无法收回。
+                  </p>
                 </details>
               </>
             ) : (

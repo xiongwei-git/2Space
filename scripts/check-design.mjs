@@ -1,11 +1,15 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 
 // Static guard complements computed-style checks; it cannot resolve the cascade.
-const css = await readFile(
-  new URL("../apps/web/src/style.css", import.meta.url),
-  "utf8",
-);
+const source = new URL("../apps/web/src/", import.meta.url);
+const css = (
+  await Promise.all(
+    (await readdir(source))
+      .filter((file) => file.endsWith(".css") && file !== "tokens.css")
+      .map((file) => readFile(new URL(file, source), "utf8")),
+  )
+).join("\n");
 const tokens = await readFile(
   new URL("../apps/web/src/tokens.css", import.meta.url),
   "utf8",

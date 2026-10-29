@@ -161,30 +161,22 @@ export default function Workspace(p: Props) {
           <a className="board-logo" href="/" aria-label="2Space首页">
             <BrandMark />
           </a>
-          <strong className="board-name">
-            2space.cn/{p.space?.name || "剪贴板"}
-          </strong>
+          <div className="board-identity">
+            <span className="board-brand-label">2Space</span>
+            <strong className="board-name">
+              2space.cn/{p.space?.name || "剪贴板"}
+            </strong>
+          </div>
           <a className="home-link" href="/">
             ← 返回首页
           </a>
         </div>
         <div className="actions">
-          {!p.reader && (
-            <>
-              <button className="btn flat" onClick={p.onPassword}>
-                <Icon name="lock" /> 密码：
-                {p.space?.passwordProtected ? "已设置" : "未设置"}
-              </button>
-              <button className="btn flat" onClick={p.onRetention}>
-                <Icon name="clock" /> 保留：{retention}
-              </button>
-            </>
-          )}
           <button className="btn ghost" onClick={() => p.onCopy(true)}>
-            <Icon name="copy" /> 复制
+            <Icon name="copy" /> 复制内容
           </button>
           <button className="btn ghost" onClick={p.onDownload}>
-            <Icon name="download" /> 下载
+            <Icon name="download" /> 下载文字
           </button>
           <button className="btn primary" onClick={p.onShare}>
             <Icon name="share" /> 分享
@@ -194,7 +186,7 @@ export default function Workspace(p: Props) {
       <section className="board-main">
         <div className="main-head">
           <h1>
-            剪贴板内容{" "}
+            文字与代码{" "}
             <span className={p.reader ? "badge readonly" : "badge"}>
               {p.reader ? "仅查看" : "可编辑"}
             </span>
@@ -202,7 +194,14 @@ export default function Workspace(p: Props) {
           {!p.reader && (
             <details className="format-shortcuts">
               <summary>更多操作</summary>
-              <div>
+              <div
+                onClick={(event) => {
+                  if ((event.target as HTMLElement).closest("button"))
+                    event.currentTarget
+                      .closest("details")
+                      ?.removeAttribute("open");
+                }}
+              >
                 <button onClick={() => p.onCopy(false)}>复制纯文字</button>
                 <button onClick={p.onSave}>立即保存</button>
                 <button onClick={p.onPrivacy}>查看隐私说明</button>
@@ -316,8 +315,13 @@ export default function Workspace(p: Props) {
         </div>
         {p.isPublic && (
           <p className="board-access-note">
-            {p.reader ? "此链接以仅查看模式打开。" : ""}
-            知道名称的人可以查看和修改，设置密码可限制访问。
+            <Icon name="lock" />
+            <span>
+              {p.reader ? "当前页面仅供查看。" : ""}
+              {p.space?.passwordProtected
+                ? "已设置密码，打开内容时需要输入。"
+                : "知道名称的人可以查看和修改，设置密码可限制访问。"}
+            </span>
           </p>
         )}
         {p.fatal && (
@@ -327,19 +331,23 @@ export default function Workspace(p: Props) {
         )}
         {p.conflicts.has(p.active) && (
           <div className="conflict-banner" role="alert">
-            <strong>其他设备也修改了这篇内容</strong>
-            <p>本机修改仍然保留，请选择保留方式。</p>
+            <strong>这篇内容在另一台设备上也有修改</strong>
+            <p>
+              你在此页的修改还在。可以另存一篇，或使用另一台设备保存的内容。
+            </p>
             <button className="btn ghost" onClick={() => p.onConflict(true)}>
               保存为新记事本
             </button>
             <button
               className="btn ghost"
               onClick={() => {
-                if (confirm("放弃本机未保存修改，加载另一端的内容？"))
+                if (
+                  confirm("放弃此页未保存的修改，使用另一台设备已保存的内容？")
+                )
                   p.onConflict(false);
               }}
             >
-              加载另一端内容
+              使用另一台设备的内容
             </button>
           </div>
         )}
@@ -378,9 +386,27 @@ export default function Workspace(p: Props) {
           </span>
         </div>
       </section>
-      <aside className="board-sidebar">
+      <aside className="board-sidebar" aria-label="分享与设置">
+        {!p.reader && (
+          <section className="card workspace-settings">
+            <h2>访问与保留</h2>
+            <button className="setting-action" onClick={p.onPassword}>
+              <Icon name="lock" /> 密码：
+              {p.space?.passwordProtected ? "已设置" : "未设置"}
+              <span aria-hidden="true">›</span>
+            </button>
+            <button className="setting-action" onClick={p.onRetention}>
+              <Icon name="clock" /> 保留：{retention}
+              <span aria-hidden="true">›</span>
+            </button>
+            <button className="inline-button" onClick={p.onPrivacy}>
+              谁可以打开这些内容？
+            </button>
+          </section>
+        )}
         <section className="card">
-          <h2>分享二维码</h2>
+          <h2>在另一台设备打开</h2>
+          <p className="rail-description">扫码继续使用，或复制链接发送。</p>
           <div className="qr-wrap">
             {p.editLink && (
               <ShareQr
@@ -397,28 +423,38 @@ export default function Workspace(p: Props) {
           </div>
         </section>
         <section className="card">
-          <h2>剪贴板信息</h2>
+          <h2>关于这个剪贴板</h2>
           {[
             ["记事本数量", `${p.pages.length}个`],
-            ["创建时间", dateText(p.space?.createdAt)],
-            ["更新时间", dateText(p.space?.updatedAt)],
-            ["上次查看", dateText(p.space?.lastViewedAt)],
-            ["被阅次数", String(p.space?.viewCount ?? 0)],
-            ["本次访问IP", p.space?.viewerIp || "—"],
-            ["保留时间", retention],
-            [
-              "到期时间",
-              p.space?.expiresAt ? dateText(p.space.expiresAt) : "永久保留",
-            ],
-            ["剩余", remainingText],
+            ["最近修改", dateText(p.space?.updatedAt)],
+            ["剩余时间", remainingText],
           ].map(([key, value]) => (
             <div className="info-row" key={key}>
               <span>{key}</span>
-              <span className={key === "本次访问IP" ? "viewer-ip" : ""}>
-                {value}
-              </span>
+              <span>{value}</span>
             </div>
           ))}
+          <details className="access-details">
+            <summary>查看访问记录与到期时间</summary>
+            {[
+              ["创建时间", dateText(p.space?.createdAt)],
+              ["上次查看", dateText(p.space?.lastViewedAt)],
+              ["查看次数", String(p.space?.viewCount ?? 0)],
+              ["本次访问IP", p.space?.viewerIp || "—"],
+              ["保留时间", retention],
+              [
+                "到期时间",
+                p.space?.expiresAt ? dateText(p.space.expiresAt) : "永久保留",
+              ],
+            ].map(([key, value]) => (
+              <div className="info-row" key={key}>
+                <span>{key}</span>
+                <span className={key === "本次访问IP" ? "viewer-ip" : ""}>
+                  {value}
+                </span>
+              </div>
+            ))}
+          </details>
         </section>
       </aside>
       <footer className="board-footer">
