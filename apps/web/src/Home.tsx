@@ -273,7 +273,7 @@ export default function Home({
                 </div>
                 <div className="demo-document">
                   <span className="demo-device-label">在电脑上放下</span>
-                  <h2>周末出发</h2>
+                  <h2>周五下班后</h2>
                   <p>周五 18:30，南站见。</p>
                   <ul>
                     <li>去吃小厨娘</li>
@@ -291,7 +291,7 @@ export default function Home({
                   <span>在手机上接着看</span>
                 </div>
                 <div className="demo-document">
-                  <h2>周末出发</h2>
+                  <h2>周五下班后</h2>
                   <p>周五 18:30，南站见。</p>
                   <ul>
                     <li>去吃小厨娘</li>
