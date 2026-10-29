@@ -63,6 +63,9 @@ type Row = {
   public_key: string | null;
   password_hash: string | null;
   password_salt: string | null;
+  protection_version: number;
+  protection_salt: string | null;
+  key_revision: number;
   view_count: number;
   last_viewed_at: string | null;
   main_page_id: string | null;
@@ -161,6 +164,57 @@ function envelope(value: unknown): Envelope {
     fail(413, "PAYLOAD_TOO_LARGE", "内容超出大小限制");
   return { iv: v.iv as string, ciphertext: v.ciphertext as string };
 }
+type BrowserProtection = {
+  version: 1;
+  kdf: "PBKDF2-SHA256";
+  iterations: 600000;
+  salt: string;
+};
+function protectionValue(value: unknown): BrowserProtection {
+  const data = object(value, ["version", "kdf", "iterations", "salt"]);
+  if (
+    data.version !== 1 ||
+    data.kdf !== "PBKDF2-SHA256" ||
+    data.iterations !== 600_000 ||
+    typeof data.salt !== "string" ||
+    !/^[A-Za-z0-9_-]{22}$/.test(data.salt) ||
+    Buffer.from(data.salt, "base64url").length !== 16 ||
+    Buffer.from(data.salt, "base64url").toString("base64url") !== data.salt
+  )
+    fail(422, "INVALID_PROTECTION", "密码保护设置无效");
+  return {
+    version: 1,
+    kdf: "PBKDF2-SHA256",
+    iterations: 600000,
+    salt: data.salt as string,
+  };
+}
+function protectionView(row: Row): BrowserProtection | undefined {
+  if (row.protection_version !== 1) return undefined;
+  if (!row.protection_salt) throw new Error("Invalid protection state");
+  return {
+    version: 1,
+    kdf: "PBKDF2-SHA256",
+    iterations: 600000,
+    salt: row.protection_salt,
+  };
+}
+function keyGeneration(value: unknown): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
+    return fail(422, "INVALID_PROTECTION", "密码保护设置无效");
+  return value;
+}
+function checkKeyRevision(row: Row, value: unknown) {
+  if (value === undefined && row.key_revision === 0) return;
+  if (value === undefined || keyGeneration(value) !== row.key_revision)
+    fail(
+      409,
+      "KEY_CHANGED",
+      "密码或访问方式已更新，请重新打开",
+      undefined,
+      row.id,
+    );
+}
 const retention = (value: unknown) =>
   typeof value === "number" && RETENTION.includes(value)
     ? value
@@ -202,6 +256,9 @@ export async function buildApp(options: AppOptions = {}) {
       public_key: "TEXT",
       password_hash: "TEXT",
       password_salt: "TEXT",
+      protection_version: "INTEGER NOT NULL DEFAULT 0",
+      protection_salt: "TEXT",
+      key_revision: "INTEGER NOT NULL DEFAULT 0",
       view_count: "INTEGER NOT NULL DEFAULT 0",
       last_viewed_at: "TEXT",
       main_page_id: "TEXT",
@@ -354,7 +411,13 @@ export async function buildApp(options: AppOptions = {}) {
     return {
       id: row.id,
       accessMode: row.access_mode,
-      ...(row.access_mode === "public" ? { publicKey: row.public_key } : {}),
+      ...(row.access_mode === "public" && row.public_key
+        ? { publicKey: row.public_key }
+        : {}),
+      ...(row.protection_version === 1
+        ? { protection: protectionView(row) }
+        : {}),
+      keyRevision: row.key_revision,
       passwordProtected: !!row.password_hash,
       viewCount: row.view_count,
       lastViewedAt: row.last_viewed_at,
@@ -547,10 +610,168 @@ export async function buildApp(options: AppOptions = {}) {
     const a = authenticate(req);
     return view(a.space, a.role, a.tokenHash, req.ip);
   });
+  app.get("/api/spaces/:id/protection", async (req) => {
+    // Public KDF metadata must not release pages, stored proofs, or decryption keys.
+    // Legacy private spaces still require their original bearer capability.
+    const a = authenticate(req, false, undefined, true);
+    return {
+      protection: protectionView(a.space) ?? null,
+      keyRevision: a.space.key_revision,
+    };
+  });
+  app.post(
+    "/api/spaces/:id/protection",
+    { bodyLimit: 3_300_000 },
+    async (req, reply) => {
+      const a = authenticate(req, true);
+      if (a.space.access_mode !== "public")
+        fail(422, "INVALID_PROTECTION", "此空间继续使用原有链接保护");
+      limit(passwordRates, `${req.ip}:${a.space.id}:password`, 15, 900_000);
+      const body = object(req.body, [
+        "expectedRevision",
+        "expectedKeyRevision",
+        "protection",
+        "proof",
+        "publicKey",
+        "pages",
+      ]);
+      const expected = revision(body.expectedRevision),
+        expectedKey = keyGeneration(body.expectedKeyRevision),
+        protection =
+          body.protection === null ? null : protectionValue(body.protection);
+      if (protection) {
+        if (!tokenValid(body.proof) || body.publicKey !== undefined)
+          fail(422, "INVALID_PROTECTION", "密码保护设置无效");
+        if (protection.salt === a.space.protection_salt)
+          fail(422, "INVALID_PROTECTION", "请重新生成密码保护设置");
+      } else if (
+        !tokenValid(body.publicKey) ||
+        body.proof !== undefined ||
+        body.publicKey === a.space.public_key
+      ) {
+        fail(422, "INVALID_PROTECTION", "请重新生成内容保护设置");
+      }
+      if (
+        !Array.isArray(body.pages) ||
+        body.pages.length < 1 ||
+        body.pages.length > 6
+      )
+        fail(422, "INVALID_PROTECTION", "请完整保存所有记事本后重试");
+      const replacements = (body.pages as unknown[]).map((item) => {
+        const page = object(item, ["id", "expectedRevision", "payload"]);
+        return {
+          id: validId(page.id),
+          expected: revision(page.expectedRevision),
+          payload: envelope(page.payload),
+        };
+      });
+      if (
+        new Set(replacements.map((page) => page.id)).size !==
+          replacements.length ||
+        new Set(replacements.map((page) => page.payload.iv)).size !==
+          replacements.length
+      )
+        fail(422, "INVALID_PROTECTION", "记事本保护设置不完整，请重试");
+      const salt = protection ? randomBytes(16).toString("base64url") : null,
+        digest =
+          protection && salt
+            ? derivePassword(body.proof as string, salt)
+            : null;
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const current = getRow(a.space.id)!;
+        if (current.key_revision !== expectedKey)
+          fail(
+            409,
+            "KEY_CHANGED",
+            "密码或访问方式已更新，请重新打开",
+            undefined,
+            current.id,
+          );
+        if (current.revision !== expected)
+          fail(
+            409,
+            "REVISION_CONFLICT",
+            "其他设备已更新，请保存后重试",
+            current.revision,
+          );
+        const existing = db
+          .prepare("SELECT * FROM pages WHERE space_id=? ORDER BY position")
+          .all(current.id) as PageRow[];
+        if (
+          existing.length !== replacements.length ||
+          existing.some(
+            (page) => !replacements.some((next) => next.id === page.id),
+          )
+        )
+          fail(
+            409,
+            "REVISION_CONFLICT",
+            "记事本列表已更新，请重新打开",
+            current.revision,
+          );
+        for (const next of replacements) {
+          const old = existing.find((page) => page.id === next.id)!;
+          if (old.revision !== next.expected)
+            fail(
+              409,
+              "REVISION_CONFLICT",
+              "其他设备已更新，请保存后重试",
+              old.revision,
+            );
+          if (
+            existing.some(
+              (page) =>
+                page.iv === next.payload.iv &&
+                page.ciphertext === next.payload.ciphertext,
+            )
+          )
+            fail(422, "INVALID_PROTECTION", "请重新保护所有记事本后重试");
+        }
+        for (const next of replacements)
+          db.prepare(
+            "UPDATE pages SET revision=revision+1,iv=?,ciphertext=? WHERE space_id=? AND id=? AND revision=?",
+          ).run(
+            next.payload.iv,
+            next.payload.ciphertext,
+            current.id,
+            next.id,
+            next.expected,
+          );
+        const changed = db
+          .prepare(
+            "UPDATE spaces SET revision=revision+1,key_revision=key_revision+1,protection_version=?,protection_salt=?,public_key=?,password_hash=?,password_salt=? WHERE id=? AND revision=? AND key_revision=?",
+          )
+          .run(
+            protection ? 1 : 0,
+            protection?.salt ?? null,
+            protection ? null : (body.publicKey as string),
+            digest,
+            salt,
+            current.id,
+            expected,
+            expectedKey,
+          );
+        if (changed.changes !== 1)
+          fail(409, "REVISION_CONFLICT", "其他设备已更新，请保存后重试");
+        db.exec("COMMIT");
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+      clearSessions(a.space.id);
+      closeStreams(a.space.id);
+      const current = getRow(a.space.id)!;
+      setSession(req, reply, current, a.tokenHash);
+      notify(a.space.id);
+      return view(current, a.role, a.tokenHash, req.ip);
+    },
+  );
   app.post("/api/spaces/:id/pages", async (req, reply) => {
     const a = authenticate(req, true),
-      body = object(req.body, ["id", "payload"]),
-      pid = validId(body.id),
+      body = object(req.body, ["id", "payload", "keyRevision"]);
+    checkKeyRevision(a.space, body.keyRevision);
+    const pid = validId(body.id),
       p = envelope(body.payload);
     const pages = db
       .prepare("SELECT id,position FROM pages WHERE space_id=?")
@@ -590,8 +811,9 @@ export async function buildApp(options: AppOptions = {}) {
   app.put("/api/spaces/:id/pages/:pageId", async (req) => {
     const a = authenticate(req, true),
       pid = validId((req.params as { pageId: string }).pageId),
-      body = object(req.body, ["expectedRevision", "payload"]),
-      expected = revision(body.expectedRevision),
+      body = object(req.body, ["expectedRevision", "payload", "keyRevision"]);
+    checkKeyRevision(a.space, body.keyRevision);
+    const expected = revision(body.expectedRevision),
       p = envelope(body.payload);
     const old = db
       .prepare("SELECT * FROM pages WHERE space_id=? AND id=?")
@@ -702,8 +924,10 @@ export async function buildApp(options: AppOptions = {}) {
     return view(getRow(a.space.id)!, a.role, a.tokenHash, req.ip);
   });
   app.post("/api/spaces/:id/password", async (req, reply) => {
-    const a = authenticate(req, true),
-      password = passwordValue(req.body);
+    const a = authenticate(req, true);
+    if (a.space.access_mode === "public" && a.space.key_revision > 0)
+      fail(409, "PROTECTION_REQUIRED", "请通过新的密码设置方式修改");
+    const password = passwordValue(req.body);
     limit(passwordRates, `${req.ip}:${a.space.id}:password`, 15, 900_000);
     const salt = password ? randomBytes(16).toString("base64url") : null;
     const digest = password && salt ? derivePassword(password, salt) : null;
@@ -718,8 +942,16 @@ export async function buildApp(options: AppOptions = {}) {
     return view(row, a.role, a.tokenHash, req.ip);
   });
   app.post("/api/spaces/:id/unlock", async (req, reply) => {
-    const a = authenticate(req, false, undefined, true),
-      password = passwordValue(req.body);
+    const a = authenticate(req, false, undefined, true);
+    const password =
+      a.space.protection_version === 1
+        ? (() => {
+            const body = object(req.body, ["proof"]);
+            if (!tokenValid(body.proof))
+              fail(422, "INVALID_PROTECTION", "密码验证信息无效");
+            return body.proof as string;
+          })()
+        : passwordValue(req.body);
     limit(passwordRates, `${req.ip}:${a.space.id}:unlock`, 20, 900_000);
     if (
       a.space.password_hash &&

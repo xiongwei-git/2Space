@@ -276,3 +276,27 @@ PR2提交787c3d8的pull_request运行40827314976完整通过，同head的push运
 最终typecheck、50项单元/集成、格式/字阶/文案检查、76组Chromium阅读/功能/axe通过；新增6组收藏弹窗覆盖桌面/390/320。看图发现320px首页按钮折行，已通过按钮不换行和顶部可重排修复；复跑76组通过。实际查看narrow-home-bookmark、mobile-workspace-bookmark，另在3210浏览器检查隐私正文、首页/工作区收藏和点击分享的“链接已复制”结果。截图output/2space-bookmark-entry.png。跨实体设备、真实系统分享菜单、原生缩放、Safari/Firefox与完整安全审计仍未验收；模拟系统拼接与真实Chromium剪贴板结果已区分。
 
 本地Docker已更新且健康，23项smoke通过。数据库快照与旧镜像保留在output/backups/before-privacy-share-bookmark-1793260937及对应标签；integrity ok。更新前后原23空间/28页/2分享全部字段摘要一致，此后才创建独立分享演示。未读取或覆盖用户正文、未清卷、未部署公网。
+
+## 浏览器密码保护交付（2026-10-29，ADR-006）
+
+用户明确授权：普通空间保持便捷、设置密码时升级浏览器解密；删除首页服务方读取问答，准确强调加密传输和加密存储。按新协议，原密码/root/正文key不上传，正文key与认证proof经PBKDF2/HKDF不同域派生；后台只存KDF参数、proof的scrypt校验与重新加密后的全文。开启/更换/取消均完整全页原子CAS并轮换加密代际，保持原修改时间、排序和期限；旧客户端不能用旧key写回，也不能用旧password接口静默降级。
+
+### 已执行
+
+- 全workspace typecheck与Prettier/diff检查通过；61项单元/集成（server30、web31）通过，含6页约3.2MB转换、事务/CAS回滚、非法KDF与密钥代际、legacy兼容、重启/过期及独立Node派生对照。
+- 46项短链接兼容、78项public/密码/期限/排序/旧private隔离继续通过。
+- 既有76组浏览器阅读/功能/axe通过，隐私问答变6项、HTTP页面不显示HTTPS宣告、正文与控件基线未下降。
+- 新75项浏览器保护检查通过：两个记事本全量转换；独立Node还原；旧server-held key与proof不能解正文；active public_key=NULL；新context错密码/正确密码/readonly；修改密码使旧密码失效；刷新仍需密码；取消保护freshkey与明确确认；旧public门禁设置新密码升级；请求和浏览器持久存储不含新原密码/正文key/明文。
+- POST服务端已提交但客户端丢响应时，再次保存只确认结果，不重复转换。另一设备改密后的旧加密草稿可用旧密码纯本机解开、另存为新页；错密码/未另存不删除加密副本，旧错误提示在成功后清除。另一个标签页在转换提交后响应前晚写入的草稿保留到recovery，不污染新代际正文。
+- 实际审查output/protection-acceptance/desktop-browser-password-settings.png、mobile-old-password-draft-recovery.png及既有桌面/窄屏截图；新增密码说明、忘记后果与恢复操作可读。3210浏览器实际检查首页加密存储文案、服务方问答移除，并创建独立普通演示空间打开新版密码设置界面；未替用户输入或设置真实密码。
+- Docker生产构建、健康与23项页面/资源/API smoke通过；另以独立合成空间完成8项实际运行容器的新保护API/认证/加解密检查，最后只删除脚本自己创建的合成空间。主JS gzip107.66KB、Editor154.49KB，未增加运行依赖。
+
+### 数据与兼容
+
+更新前在线SQLite一致性快照及旧镜像保留在output/backups/before-browser-password-1793267608和对应2space标签，目录700/文件600，integrity ok。迁移只增protection_version/protection_salt/key_revision列，按备份原列投影比较原25空间/30页/2分享全字段摘要一致；新列0/NULL默认正确。此后才创建独立演示空间。未强制迁移或改写用户已有正文、密码、到期和链接，不清卷、不部署公网。
+
+旧public密码空间继续旧门禁，通过新版重新设置密码时才升级；历史传输/快照不能追溯消除。最早无descriptor的普通public草稿如果已丢失原内存key，不能承诺靠密码恢复；其加密副本仍保留，并提示原页面先复制备份。新密码模式不把解密信息持久化在浏览器，刷新/新设备需再次输入密码。
+
+### 未验收边界
+
+没有进行独立密码学/安全审计；弱密码猜测、恶意前端/扩展、受控设备及已复制内容仍属于边界。实体手机、Safari/Firefox、原生缩放与公网HTTPS部署未验收，HTTPS提示仅在真实HTTPS协议显示，界面不展示维护或部署说明。云端CI以本次提交实际结果为准。

@@ -655,13 +655,30 @@ try {
     );
     assert.equal(
       await page.locator("#privacy-faq dt").count(),
-      7,
-      "七项隐私与泄露风险问答",
+      6,
+      "六项隐私与泄露风险问答",
     );
     assert.equal(
       await page.locator("#privacy-faq dd:visible").count(),
-      7,
+      6,
       "隐私保护范围与风险直接可读",
+    );
+    assert.equal(
+      await page
+        .getByText("服务提供方能读取我的内容吗？", { exact: true })
+        .count(),
+      0,
+      "移除服务方读取问答",
+    );
+    assert.equal(
+      await page.getByText("内容加密存储", { exact: true }).count(),
+      1,
+      "首页说明内容加密存储",
+    );
+    assert.equal(
+      await page.getByText("HTTPS 加密传输", { exact: true }).count(),
+      0,
+      "HTTP本地页面不声称HTTPS传输",
     );
     if (label === "desktop") {
       const hero = await page.locator(".hero-layout").evaluate((el) => {

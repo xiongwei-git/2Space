@@ -19,7 +19,8 @@
     "test:visual": "npm run design:check && npm run build && node scripts/visual-acceptance.mjs",
     "test:links": "npm run build && node scripts/short-links-acceptance.mjs",
     "copy:check": "node scripts/check-copy.mjs",
-    "test:parity": "npm run build -w @2space/server && node scripts/reference-parity.mjs"
+    "test:parity": "npm run build -w @2space/server && node scripts/reference-parity.mjs",
+    "test:protection": "npm run design:check && npm run build && node scripts/protection-acceptance.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",

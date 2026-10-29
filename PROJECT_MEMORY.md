@@ -116,3 +116,7 @@ T10/T11/T12已交付并停写。统一BrandMark恢复f8962f5双格几何，Home/
 ### 隐私FAQ、纯链接分享、收藏入口
 
 用户连续追加3项，均已实施，仍在feat/product-redesign/PR3。首页7项隐私问答如实说明服务方可读取按名称空间、密码边界及链接/设备/副本/访问记录风险。工作区分享取消navigator.share的text/title拼接路径，直接复制纯URL；public readonly与private reader能力保持，先用系统复制拼接fixture证实旧实现失败，再验证纯链接可打开。首页与工作区新增收藏入口，显示浏览器快捷键/菜单指引及当前页纯链接复制，不伪报自动收藏；收藏空间明示完整链接与浏览器账号共享风险。typecheck、50测试、76浏览器场景、23Docker smoke通过。320px首页按钮已看图并修复折行；实际检查3210收藏及分享提示。旧镜像与before-privacy-share-bookmark-1793260937快照可用，原23/28/2记录摘要一致；随后新建独立合成空间。浏览器书签最终确认由用户操作，未实际添加用户书签；实体手机/其他浏览器/原生缩放/独立审计仍未验收。
+
+## 当前迭代：浏览器密码保护（本地交付）
+
+用户授权采纳建议：普通空间保留名称访问，设置新密码时浏览器加密，去掉服务方读取FAQ，准确强调HTTPS/加密存储。ADR-006冻结协议。backend owns server/tests、crypto owns password-protection helper/tests、acceptance owns Home/styles/visual及新保护验收，root owns App/shared/其他文档/配置/集成。新保护不上传原密码或正文key，服务器public_key=NULL，使用proof验证与全页CAS+keyRevision；旧门禁通过重新设置新密码升级，不强制修改现有数据。root已实现丢响应二次确认与旧密码草稿恢复。最终61单元/集成、旧76阅读、46链接、78parity、新75浏览器保护检查通过，typecheck/格式/静态门禁通过。已处理丢响应确认、跨设备改密/取消、旧密码草稿本地恢复、另一tab晚写稿不盲删、旧异步加密不覆盖新代际。当前分支feat/browser-password-protection。Docker已更新且健康，23基础smoke+8实际容器新保护检查通过；更新前快照和旧镜像before-browser-password-1793267608可用，原25/30/2业务列摘要一致，新列默认正确，无用户正文/密码强制转换。root看图与3210页面检查完成，独立演示privacy-tdd8oi可由用户自行设密码。旧密码空间需通过新版重新设置新密码升级；独立审计/实体设备/其他浏览器/HTTPS公网仍未验收。

@@ -161,6 +161,15 @@
   flex: none;
   margin-top: 4px;
 }
+.encryption-note {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: var(--font-size-secondary);
+  line-height: var(--line-height-body);
+}
 .transfer-demo {
   min-width: 0;
   margin: 0;

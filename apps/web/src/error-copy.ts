@@ -1,5 +1,8 @@
 // API error codes are stable; user-facing explanations do not expose server diagnostics.
 const messages: Record<string, string> = {
+  INVALID_PROTECTION: "密码设置没有完成，请重新打开后再试。",
+  PROTECTION_REQUIRED: "请使用当前页面重新设置密码。",
+  KEY_CHANGED: "密码或访问方式已更新，请重新打开并保留未保存的修改。",
   PASSWORD_REQUIRED: "请输入空间密码后继续。",
   PASSWORD_INCORRECT: "密码不正确，请重试。",
   MAIN_PAGE: "第一个记事本需要保留，可以清空其中的内容。",

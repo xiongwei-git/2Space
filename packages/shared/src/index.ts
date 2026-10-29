@@ -1,4 +1,4 @@
-/** Frozen v1 wire contract. Never send plaintext documents or encryption keys. */
+/** Shared wire types. Private and browser-protected requests never carry document keys; ordinary public mode explicitly carries publicKey. Plaintext documents never cross the API. */
 export const MAX_PAGES = 6;
 export const MAX_CIPHERTEXT_BYTES = 400_000;
 export const RETENTION_SECONDS = [
@@ -22,6 +22,10 @@ export interface SpaceView {
   accessMode?: "private" | "public";
   publicKey?: string;
   passwordProtected?: boolean;
+  /** Present only for v3 name-based browser-password encryption. */
+  protection?: BrowserPasswordProtection;
+  /** Encryption generation; missing in legacy responses means zero. */
+  keyRevision?: number;
   viewCount?: number;
   lastViewedAt?: string | null;
   viewerIp?: string;
@@ -95,4 +99,29 @@ export interface CompactShareRequest extends CompactShareRecord {
 }
 export interface CompactShareResponse {
   share: CompactShareRecord | null;
+}
+
+/** v3 browser-password protection. The proof cannot derive the document key. */
+export const PASSWORD_KDF_ITERATIONS = 600_000;
+export interface BrowserPasswordProtection {
+  version: 1;
+  kdf: "PBKDF2-SHA256";
+  iterations: 600000;
+  /** Canonical base64url, exactly 16 random bytes. */
+  salt: string;
+}
+export interface ProtectionChallenge {
+  protection: BrowserPasswordProtection | null;
+  keyRevision: number;
+}
+export interface ChangeProtectionRequest {
+  expectedRevision: number;
+  expectedKeyRevision: number;
+  /** Null explicitly returns a public name to ordinary, unprotected access. */
+  protection: BrowserPasswordProtection | null;
+  /** Independent password-derived authentication value, 32 bytes, never a document key. */
+  proof?: string;
+  /** Only supplied when protection=null; independently generated fresh document key. */
+  publicKey?: string;
+  pages: { id: string; expectedRevision: number; payload: EncryptedPayload }[];
 }

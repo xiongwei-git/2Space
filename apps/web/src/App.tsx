@@ -5,6 +5,9 @@ import type {
   PageRecord,
   EncryptedPayload,
   CompactShareResponse,
+  BrowserPasswordProtection,
+  ProtectionChallenge,
+  ChangeProtectionRequest,
 } from "@2space/shared";
 import {
   MAX_PAGES,
@@ -19,6 +22,10 @@ import {
   unwrapKey,
   randomSecret,
 } from "./crypto.js";
+import {
+  createPasswordProtection,
+  derivePasswordProtection,
+} from "./password-protection.js";
 import { request, RequestError, subscribe } from "./api.js";
 import { sanitizeHtml, normalizeDocument } from "./sanitize.js";
 import {
@@ -49,6 +56,8 @@ interface Access {
   name?: string;
   isPublic?: boolean;
   viewOnly?: boolean;
+  keyRevision?: number;
+  protection?: BrowserPasswordProtection;
 }
 interface LocalPage {
   record: PageRecord;
@@ -57,6 +66,19 @@ interface LocalPage {
 interface Draft {
   baseRevision: number;
   payload: EncryptedPayload;
+  keyRevision?: number;
+  protection?: BrowserPasswordProtection;
+}
+interface RecoverableDraft {
+  storageKey: string;
+  spaceId: string;
+  pageId: string;
+  draft: Draft;
+}
+interface PendingProtection {
+  previous: Access;
+  next: Access;
+  proof?: string;
 }
 const emptyDoc = (title = ""): PlainDocument => ({
   title,
@@ -84,6 +106,18 @@ export default function App() {
   const [spacePassword, setSpacePassword] = useState("");
   const [lockMessage, setLockMessage] = useState("");
   const preparedReadLink = useRef("");
+  const protectionPending = useRef(false);
+  const pendingProtection = useRef<PendingProtection | null>(null);
+  const [recoverableDrafts, setRecoverableDrafts] = useState<
+    RecoverableDraft[]
+  >([]);
+  const recoveryRef = useRef<RecoverableDraft[]>([]);
+  const savingRecovery = useRef(false);
+  const ownedDrafts = useRef(new Map<string, string>());
+  const [recoveryPassword, setRecoveryPassword] = useState("");
+  const [recoveryDocuments, setRecoveryDocuments] = useState<
+    { draft: RecoverableDraft; doc: PlainDocument }[]
+  >([]);
   const [retentionDraft, setRetentionDraft] = useState(0);
   const [renameId, setRenameId] = useState("");
   const [pendingPageId, setPendingPageId] = useState("");
@@ -112,6 +146,7 @@ export default function App() {
       | "retention"
       | "support"
       | "bookmark"
+      | "recoverDraft"
       | "deletePage"
       | null
     >(null),
@@ -122,6 +157,12 @@ export default function App() {
     [unlock, setUnlock] = useState<URLSearchParams | null>(null),
     [unlockPassword, setUnlockPassword] = useState(""),
     [conflicts, setConflicts] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (modal !== "recoverDraft") {
+      setRecoveryPassword("");
+      setRecoveryDocuments([]);
+    }
+  }, [modal]);
   useEffect(() => {
     if (!modal && !unlock && !challenge && countdown === null) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -143,7 +184,8 @@ export default function App() {
       ).filter((element) => element.getClientRects().length > 0);
     controls()[0]?.focus();
     const handleKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && modal) setModal(null);
+      if (event.key === "Escape" && modal && !protectionPending.current)
+        setModal(null);
       if (event.key !== "Tab") return;
       const items = controls();
       const first = items[0],
@@ -195,7 +237,153 @@ export default function App() {
     setConflicts(new Set(conflictRef.current));
     setStatus("其他设备也有修改，请选择要保留的内容");
   }
+  function rememberRecovery(item: RecoverableDraft) {
+    if (
+      recoveryRef.current.some((entry) => entry.storageKey === item.storageKey)
+    )
+      return;
+    recoveryRef.current = [...recoveryRef.current, item];
+    setRecoverableDrafts(recoveryRef.current);
+  }
+  function retainOldDraft(
+    a: Access,
+    pageId: string,
+    draft: Draft,
+    original?: string,
+  ) {
+    const storageKey = `2space:recovery:${a.id}:${pageId}:${draft.payload.iv}`;
+    try {
+      // Copy first, so ordinary editing or password changes cannot overwrite an old draft.
+      localStorage.setItem(storageKey, JSON.stringify({ pageId, draft }));
+      const standardKey = draftKey(a.id, pageId);
+      if (
+        original === undefined ||
+        localStorage.getItem(standardKey) === original
+      )
+        localStorage.removeItem(standardKey);
+      if (draft.protection)
+        rememberRecovery({ storageKey, spaceId: a.id, pageId, draft });
+      else
+        setNotice(
+          "有一份旧修改暂时无法恢复，原草稿已单独保留。若原页面还开着，请先复制备份。",
+        );
+      return true;
+    } catch {
+      setNotice("旧修改仍在此浏览器中，请暂时不要编辑或关闭，先保留备份。");
+      return false;
+    }
+  }
+  function loadRecoverableDrafts(spaceId: string) {
+    try {
+      for (const storageKey of Object.keys(localStorage)) {
+        if (!storageKey.startsWith(`2space:recovery:${spaceId}:`)) continue;
+        const item = JSON.parse(localStorage.getItem(storageKey) || "null") as {
+          pageId?: string;
+          draft?: Draft;
+        } | null;
+        if (item?.pageId && item.draft?.protection && item.draft.payload?.iv)
+          rememberRecovery({
+            storageKey,
+            spaceId,
+            pageId: item.pageId,
+            draft: item.draft,
+          });
+      }
+    } catch {
+      setNotice("部分旧修改暂未恢复，请保留此浏览器中的记录。");
+    }
+  }
+  function storeDraft(a: Access, pageId: string, draft: Draft) {
+    const key = draftKey(a.id, pageId),
+      previous = localStorage.getItem(key);
+    if (previous && ownedDrafts.current.get(key) !== previous) {
+      try {
+        const other = JSON.parse(previous) as Draft;
+        if (!other.payload?.iv || !retainOldDraft(a, pageId, other, previous))
+          throw Error("无法备份其他页面的未保存内容");
+      } catch {
+        /* Never erase an unrecognized other-tab draft silently. */
+        throw Error("有其他页面的修改尚未保存，请先复制备份。");
+      }
+    }
+    const raw = JSON.stringify(draft);
+    localStorage.setItem(key, raw);
+    ownedDrafts.current.set(key, raw);
+  }
+  function removeOwnedDraft(spaceId: string, pageId: string) {
+    const key = draftKey(spaceId, pageId),
+      raw = ownedDrafts.current.get(key);
+    if (raw !== undefined && localStorage.getItem(key) === raw)
+      localStorage.removeItem(key);
+    ownedDrafts.current.delete(key);
+  }
+  async function preserveDraftsForKey(a: Access) {
+    for (const id of [...dirty.current]) {
+      let attempts = 0;
+      while (dirty.current.has(id)) {
+        const local = pagesRef.current.find((page) => page.record.id === id);
+        if (!local) break;
+        const version = editVersions.current.get(id);
+        const payload = await encryptDocument(local.doc, a.key);
+        if (version !== editVersions.current.get(id)) {
+          if (++attempts < 4) continue;
+          throw Error("修改仍在此页，请先暂停输入并复制备份后重试。");
+        }
+        if (!dirty.current.has(id)) break;
+        try {
+          storeDraft(a, id, {
+            baseRevision: local.record.revision,
+            payload,
+            keyRevision: a.keyRevision ?? 0,
+            protection: a.protection,
+          });
+        } catch {
+          setNotice("未保存的修改仍在此页，请先复制备份，不要关闭页面。");
+        }
+        break;
+      }
+    }
+  }
   async function decodeSpace(view: SpaceView, a: Access, initial = false) {
+    const stillCurrent = () =>
+      accessRef.current?.id === a.id &&
+      accessRef.current?.token === a.token &&
+      accessRef.current?.key === a.key &&
+      (accessRef.current?.keyRevision ?? 0) === (a.keyRevision ?? 0);
+    if (!stillCurrent()) return;
+    if ((view.keyRevision ?? 0) !== (a.keyRevision ?? 0)) {
+      const pending = pendingProtection.current;
+      if (
+        pending &&
+        pending.next.keyRevision === view.keyRevision &&
+        pending.next.protection?.salt === view.protection?.salt
+      )
+        return;
+      if (view.accessMode === "public" && !view.protection && view.publicKey) {
+        const next = {
+          ...a,
+          key: view.publicKey,
+          keyRevision: view.keyRevision ?? 0,
+          protection: undefined,
+        };
+        await preserveDraftsForKey(next);
+        if (!stillCurrent()) return;
+        await enter(next, view);
+        setNotice("密码或访问方式已更新。未保存的修改仍然保留，请检查后保存。");
+      } else {
+        passwordChallenge(
+          new RequestError(
+            401,
+            "PASSWORD_REQUIRED",
+            "请重新输入密码。",
+            view.id,
+          ),
+          a,
+        );
+        setLockMessage("密码已更换，请输入新密码。此页未保存的修改仍然保留。");
+      }
+      return;
+    }
     const seq = ++refreshSequence.current;
     const decoded = await Promise.all(
       view.pages.map(async (record) => ({
@@ -229,9 +417,16 @@ export default function App() {
             const raw = localStorage.getItem(draftKey(a.id, remote.record.id));
             if (raw) {
               const draft = JSON.parse(raw) as Draft;
-              const doc = cleanDocument(
-                await decryptDocument(draft.payload, a.key),
-              );
+              let doc: PlainDocument;
+              try {
+                doc = cleanDocument(
+                  await decryptDocument(draft.payload, a.key),
+                );
+              } catch {
+                retainOldDraft(a, remote.record.id, draft, raw);
+                return remote;
+              }
+              ownedDrafts.current.set(draftKey(a.id, remote.record.id), raw);
               dirty.current.add(remote.record.id);
               if (draft.baseRevision !== remote.record.revision)
                 markConflict(remote.record.id);
@@ -333,6 +528,21 @@ export default function App() {
       !error.spaceId
     )
       return false;
+    // A late failure from an old SSE/refetch must not lock a newly unlocked generation.
+    if (
+      a &&
+      accessRef.current &&
+      (accessRef.current.id !== a.id ||
+        accessRef.current.key !== a.key ||
+        (accessRef.current.keyRevision ?? 0) !== (a.keyRevision ?? 0))
+    )
+      return true;
+    if (
+      a &&
+      protectionPending.current &&
+      pendingProtection.current?.previous.id === a.id
+    )
+      return true;
     suspendedAccess.current = a || accessRef.current;
     refreshSequence.current++;
     const token = a?.token || accessRef.current?.token || "";
@@ -364,6 +574,7 @@ export default function App() {
   }
   async function enter(a: Access, initialView?: SpaceView) {
     if (localLockRequired(a)) return;
+    loadRecoverableDrafts(a.id);
     setReady(false);
     accessRef.current = a;
     setAccess(a);
@@ -400,6 +611,13 @@ export default function App() {
     const view =
       existing ||
       (await request<SpaceView>(`/spaces/by-name/${encodeURIComponent(name)}`));
+    if (view.accessMode === "public" && view.protection) {
+      setChallenge({ id: view.id, token: "" });
+      setUnlockPassword("");
+      setAccess(null);
+      setReady(false);
+      return;
+    }
     if (view.accessMode !== "public" || !view.publicKey) {
       setLockedName(name);
       return;
@@ -413,6 +631,7 @@ export default function App() {
         role: view.role,
         isPublic: true,
         viewOnly,
+        keyRevision: view.keyRevision ?? 0,
       },
       view,
     );
@@ -534,7 +753,7 @@ export default function App() {
       setOnline,
     );
     return () => controller.abort();
-  }, [access?.id, access?.token, ready, challenge]);
+  }, [access?.id, access?.token, access?.keyRevision, ready, challenge]);
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
       if (dirty.current.size) {
@@ -638,7 +857,8 @@ export default function App() {
   }
   function updatePage(id: string, change: Partial<PlainDocument>) {
     const a = accessRef.current;
-    if (!a || a.role !== "owner" || a.viewOnly) return;
+    if (!a || a.role !== "owner" || a.viewOnly || protectionPending.current)
+      return;
     const current = pagesRef.current.find((p) => p.record.id === id);
     if (!current) return;
     const doc = { ...current.doc, ...change };
@@ -653,15 +873,20 @@ export default function App() {
     const prior = timers.current.get(id);
     if (prior) clearTimeout(prior);
     void encryptDocument(doc, a.key).then((payload) => {
-      if (dirty.current.has(id) && editVersions.current.get(id) === version) {
+      if (
+        dirty.current.has(id) &&
+        editVersions.current.get(id) === version &&
+        accessRef.current?.id === a.id &&
+        accessRef.current?.key === a.key &&
+        (accessRef.current?.keyRevision ?? 0) === (a.keyRevision ?? 0)
+      ) {
         try {
-          localStorage.setItem(
-            draftKey(a.id, id),
-            JSON.stringify({
-              baseRevision: current.record.revision,
-              payload,
-            } satisfies Draft),
-          );
+          storeDraft(a, id, {
+            baseRevision: current.record.revision,
+            payload,
+            keyRevision: a.keyRevision ?? 0,
+            protection: a.protection,
+          });
         } catch {
           setNotice("未保存的修改只能暂留此页，请勿关闭，尽快保存或复制备份。");
         }
@@ -699,7 +924,11 @@ export default function App() {
         `/spaces/${a.id}/pages/${id}`,
         a.token,
         "PUT",
-        { expectedRevision: item.record.revision, payload },
+        {
+          expectedRevision: item.record.revision,
+          payload,
+          keyRevision: a.keyRevision ?? 0,
+        },
       );
       publish(
         pagesRef.current.map((p) =>
@@ -710,7 +939,7 @@ export default function App() {
       if ((editVersions.current.get(id) || 0) === version) {
         dirty.current.delete(id);
         try {
-          localStorage.removeItem(draftKey(a.id, id));
+          removeOwnedDraft(a.id, id);
         } catch {}
       } else {
         const latest = pagesRef.current.find((p) => p.record.id === id);
@@ -722,13 +951,12 @@ export default function App() {
             editVersions.current.get(id) === newerVersion
           ) {
             try {
-              localStorage.setItem(
-                draftKey(a.id, id),
-                JSON.stringify({
-                  baseRevision: record.revision,
-                  payload: newerPayload,
-                } satisfies Draft),
-              );
+              storeDraft(a, id, {
+                baseRevision: record.revision,
+                payload: newerPayload,
+                keyRevision: a.keyRevision ?? 0,
+                protection: a.protection,
+              });
             } catch {}
           }
         }
@@ -739,7 +967,11 @@ export default function App() {
         setStatus("请输入密码后继续保存。");
         return;
       }
-      if (e instanceof RequestError && e.status === 409) markConflict(id);
+      if (e instanceof RequestError && e.code === "KEY_CHANGED") {
+        deferredRefresh.current = true;
+        setStatus("密码或访问方式已更新，请重新确认后保存。");
+      } else if (e instanceof RequestError && e.status === 409)
+        markConflict(id);
       else {
         retry =
           (!(e instanceof RequestError) ||
@@ -789,7 +1021,7 @@ export default function App() {
         `/spaces/${a.id}/pages`,
         a.token,
         "POST",
-        { id, payload },
+        { id, payload, keyRevision: a.keyRevision ?? 0 },
       );
       publish([...pagesRef.current, { record, doc }]);
       setActive(id);
@@ -825,7 +1057,7 @@ export default function App() {
       });
       dirty.current.delete(targetId);
       try {
-        localStorage.removeItem(draftKey(a.id, targetId));
+        removeOwnedDraft(a.id, targetId);
       } catch {}
       conflictRef.current.delete(targetId);
       setConflicts(new Set(conflictRef.current));
@@ -861,7 +1093,7 @@ export default function App() {
       }
       dirty.current.delete(local.record.id);
       try {
-        localStorage.removeItem(draftKey(a.id, local.record.id));
+        removeOwnedDraft(a.id, local.record.id);
       } catch {}
       conflictRef.current.delete(local.record.id);
       setConflicts(new Set(conflictRef.current));
@@ -1099,9 +1331,10 @@ export default function App() {
       timers.current.clear();
       dirty.current.clear();
       try {
-        const prefix = `2space:draft:${a.id}:`;
+        const prefixes = [`2space:draft:${a.id}:`, `2space:recovery:${a.id}:`];
         for (const key of Object.keys(localStorage)) {
-          if (key.startsWith(prefix)) localStorage.removeItem(key);
+          if (prefixes.some((prefix) => key.startsWith(prefix)))
+            localStorage.removeItem(key);
         }
       } catch {}
       setReady(false);
@@ -1160,44 +1393,292 @@ export default function App() {
       setBusy(false);
     }
   }
-  async function changePassword() {
+  async function decryptRecoveryDrafts() {
     const a = accessRef.current;
-    if (!a) return;
+    if (!a || busy) return;
     setBusy(true);
     try {
-      const view = await request<SpaceView>(
-        `/spaces/${a.id}/password`,
-        a.token,
-        "POST",
-        { password: spacePassword },
+      const items = recoveryRef.current.filter((item) => item.spaceId === a.id);
+      const attempts = await Promise.allSettled(
+        items.map(async (item) => {
+          if (!item.draft.protection)
+            throw Error("这份旧修改无法用密码恢复，请保留原记录。");
+          const { key } = await derivePasswordProtection(
+            recoveryPassword,
+            a.id,
+            item.draft.protection,
+          );
+          return {
+            draft: item,
+            doc: cleanDocument(await decryptDocument(item.draft.payload, key)),
+          };
+        }),
       );
-      setSpace(view);
-      setSpacePassword("");
-      setModal(null);
-      setNotice(view.passwordProtected ? "密码已设置" : "密码已移除");
-    } catch (error) {
-      if (!passwordChallenge(error, a)) setNotice(message(error));
+      const documents = attempts.flatMap((item) =>
+        item.status === "fulfilled" ? [item.value] : [],
+      );
+      if (!documents.length) throw Error("没有可恢复的修改");
+      setRecoveryDocuments(documents);
+      setNotice("");
+      if (documents.length < items.length)
+        setNotice("已恢复能用此密码打开的修改，其他修改仍然保留。");
+      setRecoveryPassword("");
+    } catch {
+      setNotice("上次的密码不正确，或旧修改暂时无法读取。原记录仍然保留。");
     } finally {
       setBusy(false);
     }
   }
-  async function unlockWholeSpace() {
-    if (!challenge) return;
+  async function saveRecoveredDrafts() {
+    const a = accessRef.current;
+    if (!a || busy || savingRecovery.current) return;
+    savingRecovery.current = true;
+    try {
+      for (const item of recoveryDocuments) {
+        if (pagesRef.current.length >= MAX_PAGES) {
+          setNotice(
+            "记事本已满。请先复制恢复的内容备份，或整理现有记事本。旧修改仍然保留。",
+          );
+          return;
+        }
+        if (
+          !(await addPage({
+            ...item.doc,
+            title: `${item.doc.title || "未保存的修改"}（恢复）`,
+          }))
+        )
+          return;
+        try {
+          localStorage.removeItem(item.draft.storageKey);
+        } catch {}
+        recoveryRef.current = recoveryRef.current.filter(
+          (entry) => entry.storageKey !== item.draft.storageKey,
+        );
+        setRecoverableDrafts(recoveryRef.current);
+        setRecoveryDocuments((items) =>
+          items.filter(
+            (entry) => entry.draft.storageKey !== item.draft.storageKey,
+          ),
+        );
+      }
+      setModal(null);
+      setNotice("未保存的修改已另存为新记事本。");
+    } finally {
+      savingRecovery.current = false;
+    }
+  }
+  async function finishProtection(view: SpaceView, next: Access) {
+    for (const timer of timers.current.values()) clearTimeout(timer);
+    timers.current.clear();
+    // A different tab may have written a draft during rotation. Let enter decode
+    // or retain it; only each successful save clears that tab's owned value.
+    pendingProtection.current = null;
+    setSpacePassword("");
+    await enter(next, view);
+    setModal(null);
+    setNotice(view.passwordProtected ? "密码已设置" : "密码已移除");
+  }
+  async function reconcileProtection(pending: PendingProtection) {
+    const info = await request<ProtectionChallenge>(
+      `/spaces/${pending.next.id}/protection`,
+    );
+    if (info.keyRevision === (pending.previous.keyRevision ?? 0)) {
+      pendingProtection.current = null;
+      return false;
+    }
+    if (
+      info.keyRevision !== pending.next.keyRevision ||
+      info.protection?.salt !== pending.next.protection?.salt
+    )
+      throw Error("密码或访问方式已在其他设备更改，请重新打开后检查内容。");
+    if (pending.proof)
+      await request(`/spaces/${pending.next.id}/unlock`, "", "POST", {
+        proof: pending.proof,
+      });
+    const view = await request<SpaceView>(`/spaces/${pending.next.id}`);
+    // Validate the candidate before replacing any local state after an uncertain response.
+    await Promise.all(
+      view.pages.map((page) => decryptDocument(page.payload, pending.next.key)),
+    );
+    await finishProtection(view, pending.next);
+    return true;
+  }
+  async function changePassword() {
+    const a = accessRef.current;
+    if (!a || busy) return;
+    if (a.isPublic && spacePassword && spacePassword.length < 8) {
+      setNotice("请使用至少8个字符的密码，建议使用较长且不重复的密码。");
+      return;
+    }
+    if (
+      a.isPublic &&
+      !spacePassword &&
+      space?.passwordProtected &&
+      !pendingProtection.current &&
+      !confirm("取消密码后，知道名称的人都可以查看和修改内容。确定取消？")
+    )
+      return;
+    protectionPending.current = true;
     setBusy(true);
     try {
-      await request(`/spaces/${challenge.id}/unlock`, challenge.token, "POST", {
-        password: unlockPassword,
-      });
+      if (!a.isPublic) {
+        const view = await request<SpaceView>(
+          `/spaces/${a.id}/password`,
+          a.token,
+          "POST",
+          { password: spacePassword },
+        );
+        setSpace(view);
+        setSpacePassword("");
+        setModal(null);
+        setNotice(view.passwordProtected ? "密码已设置" : "密码已移除");
+        return;
+      }
+      if (
+        pendingProtection.current &&
+        (await reconcileProtection(pendingProtection.current))
+      )
+        return;
+      const deadline = Date.now() + 20000;
+      while (saving.current.size && Date.now() < deadline)
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      if (saving.current.size)
+        throw Error("内容还未保存完成，请稍后重试，不要关闭页面。");
+      for (const id of dirty.current) await save(id);
+      if (dirty.current.size || conflictRef.current.size)
+        throw Error("请先保存当前修改并处理其他设备的修改，再设置密码。");
+      const latest = await request<SpaceView>(`/spaces/${a.id}`, a.token);
+      if ((latest.keyRevision ?? 0) !== (a.keyRevision ?? 0)) {
+        await decodeSpace(latest, a);
+        throw Error("密码或访问方式已更新，请重新打开后再试。");
+      }
+      const decoded = await Promise.all(
+        latest.pages.map(async (record) => ({
+          record,
+          doc: await decryptDocument(record.payload, a.key),
+        })),
+      );
+      const protection = spacePassword ? createPasswordProtection() : null;
+      const derived = protection
+        ? await derivePasswordProtection(spacePassword, a.id, protection)
+        : undefined;
+      const key = derived?.key ?? randomSecret();
+      const next: Access = {
+        ...a,
+        key,
+        keyRevision: (latest.keyRevision ?? 0) + 1,
+        protection: protection ?? undefined,
+      };
+      const body: ChangeProtectionRequest = {
+        expectedRevision: latest.revision,
+        expectedKeyRevision: latest.keyRevision ?? 0,
+        protection,
+        ...(derived ? { proof: derived.proof } : { publicKey: key }),
+        pages: await Promise.all(
+          decoded.map(async ({ record, doc }) => ({
+            id: record.id,
+            expectedRevision: record.revision,
+            payload: await encryptDocument(doc, key),
+          })),
+        ),
+      };
+      pendingProtection.current = { previous: a, next, proof: derived?.proof };
+      const view = await request<SpaceView>(
+        `/spaces/${a.id}/protection`,
+        a.token,
+        "POST",
+        body,
+      );
+      await finishProtection(view, next);
+    } catch (error) {
+      if (error instanceof RequestError) pendingProtection.current = null;
+      if (!passwordChallenge(error, a))
+        setNotice(
+          pendingProtection.current
+            ? "设置结果暂未确认。请保留此页，联网后再次点击保存以确认结果；重新打开时可尝试刚设置的密码。"
+            : message(error),
+        );
+    } finally {
+      protectionPending.current = false;
+      setBusy(false);
+    }
+  }
+  async function unlockWholeSpace() {
+    if (!challenge || busy) return;
+    setBusy(true);
+    try {
+      const info = await request<ProtectionChallenge>(
+        `/spaces/${challenge.id}/protection`,
+        challenge.token,
+      );
+      const derived = info.protection
+        ? await derivePasswordProtection(
+            unlockPassword,
+            challenge.id,
+            info.protection,
+          )
+        : undefined;
+      await request(
+        `/spaces/${challenge.id}/unlock`,
+        challenge.token,
+        "POST",
+        derived ? { proof: derived.proof } : { password: unlockPassword },
+      );
       try {
         sessionStorage.removeItem(`2space:locked:${challenge.id}`);
       } catch {}
-      setLockMessage("");
       const previous = suspendedAccess.current;
-      setChallenge(null);
-      setUnlockPassword("");
-      setModal(null);
-      if (previous?.id === challenge.id) await enter(previous);
-      else await initialize();
+      const view = derived
+        ? await request<SpaceView>(`/spaces/${challenge.id}`, challenge.token)
+        : undefined;
+      if (derived && view) {
+        if (
+          view.keyRevision !== info.keyRevision ||
+          view.protection?.salt !== info.protection?.salt
+        )
+          throw Error("密码刚刚发生变化，请重新输入后再试。");
+        const next: Access = {
+          id: view.id,
+          name: view.name,
+          key: derived.key,
+          token: "",
+          role: view.role,
+          isPublic: true,
+          viewOnly:
+            previous?.viewOnly ??
+            new URLSearchParams(location.search).has("readonly"),
+          keyRevision: view.keyRevision ?? 0,
+          protection: view.protection,
+        };
+        if (previous?.id === next.id) await preserveDraftsForKey(next);
+        setChallenge(null);
+        setUnlockPassword("");
+        setLockMessage("");
+        setModal(null);
+        await enter(next, view);
+      } else {
+        setChallenge(null);
+        setUnlockPassword("");
+        setLockMessage("");
+        setModal(null);
+        if (previous?.id === challenge.id) {
+          const normal = await request<SpaceView>(
+            `/spaces/${challenge.id}`,
+            challenge.token,
+          );
+          const next =
+            previous.isPublic && normal.publicKey
+              ? {
+                  ...previous,
+                  key: normal.publicKey,
+                  keyRevision: normal.keyRevision ?? 0,
+                  protection: undefined,
+                }
+              : previous;
+          if (next.key !== previous.key) await preserveDraftsForKey(next);
+          await enter(next, normal);
+        } else await initialize();
+      }
     } catch (error) {
       setNotice(message(error));
     } finally {
@@ -1389,6 +1870,11 @@ export default function App() {
           onCopy={(rich) => void copy(rich)}
           onDownload={download}
           onShare={() => void shareCurrent()}
+          recoverableDraftCount={
+            recoverableDrafts.filter((item) => item.spaceId === access.id)
+              .length
+          }
+          onRecoverDrafts={() => setModal("recoverDraft")}
           onBookmark={() => setModal("bookmark")}
           onPassword={() => {
             setSpacePassword("");
@@ -1435,7 +1921,13 @@ export default function App() {
         <div
           className="modal-backdrop"
           onClick={() => {
-            if (!challenge && !unlock && countdown === null) setModal(null);
+            if (
+              !protectionPending.current &&
+              !challenge &&
+              !unlock &&
+              countdown === null
+            )
+              setModal(null);
           }}
         >
           <section
@@ -1455,15 +1947,17 @@ export default function App() {
                         ? "设置剪贴板密码"
                         : modal === "retention"
                           ? "设置保留时间"
-                          : modal === "bookmark"
-                            ? "添加浏览器书签"
-                            : modal === "support"
-                              ? "支持2Space"
-                              : modal === "share"
-                                ? "分享空间"
-                                : modal === "open"
-                                  ? "打开空间"
-                                  : "隐私说明"
+                          : modal === "recoverDraft"
+                            ? "恢复未保存内容"
+                            : modal === "bookmark"
+                              ? "添加浏览器书签"
+                              : modal === "support"
+                                ? "支持2Space"
+                                : modal === "share"
+                                  ? "分享空间"
+                                  : modal === "open"
+                                    ? "打开空间"
+                                    : "隐私说明"
             }
             onClick={(event) => event.stopPropagation()}
           >
@@ -1471,7 +1965,10 @@ export default function App() {
               <button
                 className="modal-close"
                 aria-label="关闭窗口"
-                onClick={() => setModal(null)}
+                disabled={protectionPending.current}
+                onClick={() => {
+                  if (!protectionPending.current) setModal(null);
+                }}
               >
                 ×
               </button>
@@ -1560,6 +2057,90 @@ export default function App() {
                   </button>
                 </div>
               </>
+            ) : modal === "recoverDraft" ? (
+              <>
+                <h2>恢复未保存内容</h2>
+                {recoveryDocuments.length ? (
+                  <>
+                    <p>
+                      内容已在此浏览器中恢复。另存为新记事本，不会覆盖其他设备保存的内容。
+                    </p>
+                    {recoveryDocuments.map((item) => (
+                      <pre
+                        className="recovery-preview"
+                        tabIndex={0}
+                        key={item.draft.storageKey}
+                      >
+                        {item.doc.text}
+                      </pre>
+                    ))}
+                    <div className="foot">
+                      <button
+                        className="btn ghost"
+                        onClick={() => {
+                          void navigator.clipboard
+                            .writeText(
+                              recoveryDocuments
+                                .map((item) => item.doc.text)
+                                .join("\n\n"),
+                            )
+                            .then(() => setNotice("恢复的内容已复制"))
+                            .catch(() =>
+                              setNotice("复制未成功，请选中上方内容手动复制。"),
+                            );
+                        }}
+                      >
+                        复制恢复内容
+                      </button>
+                      <button
+                        className="btn primary"
+                        disabled={busy}
+                        onClick={() => void saveRecoveredDrafts()}
+                      >
+                        另存为新记事本
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <form
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void decryptRecoveryDrafts();
+                    }}
+                  >
+                    <p>
+                      密码变更前，有些修改未能保存。输入上次使用的密码，在这台设备上恢复；这个密码不会发到服务器。
+                    </p>
+                    <input
+                      className="input"
+                      type="password"
+                      aria-label="上次使用的密码"
+                      autoComplete="off"
+                      value={recoveryPassword}
+                      onChange={(event) =>
+                        setRecoveryPassword(event.target.value)
+                      }
+                      disabled={busy}
+                    />
+                    <div className="foot">
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        disabled={busy}
+                        onClick={() => setModal(null)}
+                      >
+                        稍后恢复
+                      </button>
+                      <button
+                        className="btn primary"
+                        disabled={busy || !recoveryPassword}
+                      >
+                        恢复内容
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </>
             ) : modal === "password" ? (
               <form
                 onSubmit={(event) => {
@@ -1571,6 +2152,7 @@ export default function App() {
                 <input
                   className="input"
                   aria-label="新密码"
+                  disabled={busy}
                   type="password"
                   autoComplete="new-password"
                   placeholder="输入密码"
@@ -1579,12 +2161,18 @@ export default function App() {
                 />
                 <p className="modal-desc">
                   {space?.passwordProtected
-                    ? "输入新密码可更换密码；留空后保存，将取消密码保护。"
+                    ? "输入新密码可更换密码；留空后保存，将取消密码保护。请先让其他设备保存未完成的修改。"
                     : "设置后，每台设备打开时都需要输入密码。请自行记住，密码无法找回。"}
                 </p>
+                {isPublic && (
+                  <p className="modal-desc">
+                    新密码至少8个字符，建议使用较长且不重复的密码。设置或更换密码时，内容会在浏览器中重新加密后保存。请记住新密码，忘记后无法找回内容。
+                  </p>
+                )}
                 <div className="foot">
                   <button
                     type="button"
+                    disabled={busy}
                     className="btn ghost"
                     onClick={() => setModal(null)}
                   >

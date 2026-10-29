@@ -18,3 +18,15 @@ PUT采用expectedRevision并原子比较更新，冲突409不得自动覆盖。�
 ## v2 命名与短链接
 
 新增接口、响应、HKDF编码与增量迁移的权威补充是 [SHORT-LINKS.md](SHORT-LINKS.md)。v1接口与旧能力链接继续受支持。现代POST分享与GET分享统一返回 `{share: CompactShareRecord|null}`，首次201，原子复用200。密文keyEnvelope解码为48字节，ownerEnvelope不超过1024字节。
+
+## v3 浏览器密码保护（ADR-006）
+
+新版客户端为public名称空间设置/更换密码时走本节，普通public和旧private能力链接继续兼容。旧public仅密码门禁不在启动迁移中自动转换；通过新界面重新设置密码时全量升级。
+
+- `GET /api/spaces/:id/protection`：public可获取`{protection:descriptor|null,keyRevision}`，只公开KDF参数；private仍需原Bearer，不跳过原能力鉴权。
+- descriptor固定`{version:1,kdf:"PBKDF2-SHA256",iterations:600000,salt:base64url16bytes}`。内容key与认证proof由浏览器PBKDF2+HKDF不同域派生；具体字节协议见ADR-006。原密码/root/内容key不进入新保护请求，proof仅用于认证，不可解正文。
+- `POST /api/spaces/:id/protection`：输入shared.ChangeProtectionRequest，严格space/page/keyRevision CAS、全页重加密，一个事务替换。开启/更换传descriptor+proof，禁止publicKey；取消传null+fresh publicKey，禁止proof。成功给当前请求新cookie，撤销其他会话/SSE，返回SpaceView。
+- SpaceView新增`keyRevision`与可选`protection`；保护期间没有publicKey。新加密代际要求POST/PUT pages附带对应`keyRevision`，旧代际写入409 `KEY_CHANGED`，不能静默污染新内容。
+- `POST /unlock`新保护仅接收`{proof}`，旧门禁仍接收`{password}`，成功均204。任何经历过v3转换的public空间拒绝旧`/password`接口，409 `PROTECTION_REQUIRED`，防止取消后被旧客户端静默降级。
+- 原子转换保持createdAt/updatedAt/expiresAt及排序，增加space/page revision与keyRevision，不将密码变化当正文编辑续期。新路由上限3,300,000字节容纳6页，其他请求上限不变。
+- 新增422 `INVALID_PROTECTION`；任何验证/CAS/限速失败不允许部分转换。proof哈希和服务端盐不进入响应，KDF参数不接受降低次数或任意配置。

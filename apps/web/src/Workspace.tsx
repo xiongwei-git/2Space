@@ -33,6 +33,8 @@ interface Props {
   onCopy: (rich?: boolean) => void;
   onDownload: () => void;
   onShare: () => void;
+  recoverableDraftCount?: number;
+  onRecoverDrafts?: () => void;
   onBookmark: () => void;
   onPassword: () => void;
   onRetention: () => void;
@@ -331,6 +333,17 @@ export default function Workspace(p: Props) {
                 : "知道名称的人可以查看和修改，设置密码可限制访问。"}
             </span>
           </p>
+        )}
+        {!!p.recoverableDraftCount && (
+          <div className="conflict-banner">
+            <strong>这台设备有未恢复的修改</strong>
+            <p>
+              使用上次的密码恢复后，可另存为新记事本；原记录会保留到恢复成功。
+            </p>
+            <button className="btn ghost" onClick={p.onRecoverDrafts}>
+              恢复未保存内容
+            </button>
+          </div>
         )}
         {p.fatal && (
           <div className="error-banner" role="alert">
