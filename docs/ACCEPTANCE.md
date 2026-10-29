@@ -226,3 +226,15 @@ GitHub提交7370baf的运行40822996068在 `desktop-reference-text-200` 失败�
 axe incomplete仍保留color-contrast、label-content-name-mismatch和aria-required-children供人工审查：当前label不确定项来自×关闭/删除符号，不再来自代码复制按钮；颜色与aria-owns的既有人工说明继续适用。未关闭规则，不宣称全站WCAG合规。原生浏览器200%/400%缩放、实体手机、Safari/Firefox、真实屏幕阅读器和独立安全审计仍未验收。
 
 本轮仅使用随机loopback和隔离临时SQLite，结束后清理合成库；未操作3210、运行数据、数据卷或Git。最终产物主JS gzip102.30KB、按需Editor154.45KB、QR8.86KB、CSS6.40KB；本地Docker切换和云端结果由集成任务另行核实。
+
+## 同提交两条云端运行差异与选区前置条件（2026-10-29）
+
+PR2提交787c3d8的pull_request运行40827314976完整通过，同head的push运行40827274046在旧56组全部通过后，于desktop-programmer-setup发生30秒waitForFunction超时。已核验GitHub连接并读取失败日志、下载artifact至忽略的 `output/ci-787c-push/`。旧报告只有56组截图，没有代码setup失败UI；不能从这些证据还原究竟哪个等待点超时，不能直接归因产品、clipboard或mock时钟。
+
+局部最小实验排除“runFor1500必然永久冻结RAF”的猜测：推进后新增RAF仍在真实时间触发，未以加resume作为修复。有界旧流程重复中12次均观测到Range设置结束时DOM已在第一块，而ProseMirror选区尚未在第一块起点；随后操作通常恰好同步并通过。这证明前置条件存在异步窗口，但尚未复现原云端超时，不能称已确认其根因。源码同时表明PM selectionchange异步处理，focus处理还可能延后恢复旧model选区。
+
+验收准备改为使用Tiptap明确为测试暴露的dom.editor，以setTextSelection设置第一块起点并focus；只准备光标，不改正文、不调用缩进实现。随后验证DOM anchor/offset和PM selection.from、empty、codeBlock、parentOffset及view focus一致，再发送真实Tab/Shift+Tab。所有缩进结果、复制原文、无写入、保存、阅读与axe门禁保持，不增加超时或固定sleep。
+
+新增细分stage覆盖挂载无写入、语言、逐块复制、选区、缩进/反缩进、Esc、退出、保存和仅查看复制。若再次失败，记录脱敏截图及焦点、选区类型/块索引/offset、高亮布尔和代码长度，不记录正文、clipboard内容、密钥或完整链接。这样下一次云端结果可定位具体步骤，避免重复盲跑。最终本地结果和新云端结果分别记录，不用同head另一成功运行抹去失败。
+
+本次选区准备与诊断改动后的完整 `npm run test:visual` 再次67组通过（report passed、阅读失败0、axe自动违规0），含原56及所有新代码/粘贴/旧表格场景。未修改产品源码，产物hash保持index-rZTuk5QM/Editor-BTrHC6DV。临时探针脚本已移除；新提交的push/pull_request两条Linux检查仍待集成任务实际触发确认，不能据本地通过宣称原push问题已在云端解决。

@@ -94,3 +94,7 @@ T10/T11/T12已交付并停写。统一BrandMark恢复f8962f5双格几何，Home/
 50项单元/集成(25server+25web)、67组浏览器阅读/功能、静态字阶与文案通过。root实际查看desktop Home/Editor、320px代码与390px旧表格，代码/行号齐整、原表格所有单元格文字可读；完整axe零自动违规不是全站合规。编辑器gzip154.45KB，较171.4KB下降约10%。
 
 已备份output/backups/before-brand-code-final-1793253907及同名旧镜像标签，然后更新本地3210。15空间/19页/2短分享所有记录摘要一致，SQLite integrity ok；运行入口asset hash与67组构建一致，24项含Docker重启smoke通过。未清卷、未部署公网，原生缩放/实体手机/屏幕阅读器/独立安全审计仍未验收。后续GitHub检查以新提交实际结果为准。
+
+### 云端重复检查的测试选区同步
+
+787c3d8的PR Linux CI全项成功，同代码push CI在新增代码setup某wait超时。旧artifact无该setup失败截图，不能确认具体等待点。交付任务12次局部探针均观察到DOM Range已在首块、PM模型选区尚未同步；现仅在测试准备阶段用Tiptap测试挂载设置选区并核对DOM/model/view焦点，再发送真实Tab/ShiftTab，原功能断言不变。增加细分阶段与失败脱敏截图/布尔诊断；最新本地67再次通过。未改产品或3210，最终两条Linux结果以新测试提交为准。

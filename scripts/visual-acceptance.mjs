@@ -24,6 +24,8 @@ let browser;
 const records = [];
 const startedAt = new Date().toISOString();
 let stage = "startup";
+let programmerPage;
+let failureDiagnostics;
 async function report(status) {
   await writeFile(
     join(out, "report.json"),
@@ -36,6 +38,7 @@ async function report(status) {
         startedAt,
         status,
         stage,
+        failureDiagnostics,
         records,
       },
       null,
@@ -1470,7 +1473,9 @@ try {
       )
         codeLoadWrites++;
     });
+    programmerPage = page;
     await page.clock.install();
+    stage = `${label}-programmer-load-no-write`;
     await page.goto(`${address}/${codeName}`);
     await workspace(page);
     await page.clock.runFor(1500);
@@ -1521,6 +1526,7 @@ try {
       (await first.locator(".hljs-keyword").count()) > 0,
       "第一块语法高亮",
     );
+    stage = `${label}-programmer-language-plaintext`;
     await first
       .getByRole("combobox", { name: "代码语言", exact: true })
       .selectOption("plaintext");
@@ -1536,6 +1542,7 @@ try {
       0,
       "选择纯文本不自动猜高亮",
     );
+    stage = `${label}-programmer-language-javascript`;
     await first
       .getByRole("combobox", { name: "代码语言", exact: true })
       .selectOption("javascript");
@@ -1569,6 +1576,7 @@ try {
       [first, firstCode],
       [second, secondCode],
     ]) {
+      stage = `${label}-programmer-copy-${expected === firstCode ? "first" : "second"}`;
       await block
         .getByRole("button", { name: "复制代码", exact: true })
         .click();
@@ -1582,19 +1590,43 @@ try {
         "复制原始代码，不包含行号/语言/按钮",
       );
     }
+    stage = `${label}-programmer-select-first-code`;
     const firstContent = first.locator("code[data-node-view-content]");
     await firstContent.evaluate((element) => {
-      document.querySelector(".tiptap").focus();
+      const editor = document.querySelector(".tiptap").editor;
       const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
       let node = walker.nextNode();
       while (node && !node.textContent.length) node = walker.nextNode();
-      const range = document.createRange();
-      range.setStart(node, 0);
-      range.collapse(true);
-      const selection = getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
+      // Tiptap exposes dom.editor for tests. Prepare only the selection; the
+      // indent/outdent behavior below is exercised by real keyboard events.
+      editor.commands.setTextSelection(editor.view.posAtDOM(node, 0));
+      editor.view.focus();
     });
+    // Confirm model and DOM agree before exercising a selection-based command.
+    await page.waitForFunction(() => {
+      const element = document.querySelector(".tiptap");
+      const editor = element?.editor;
+      const selection = editor?.state.selection;
+      const code = document.querySelector(
+        ".code-block-view code[data-node-view-content]",
+      );
+      if (!editor || !code) return false;
+      const walker = document.createTreeWalker(code, NodeFilter.SHOW_TEXT);
+      let target = walker.nextNode();
+      while (target && !target.textContent.length) target = walker.nextNode();
+      return (
+        target &&
+        document.activeElement === element &&
+        editor.view.hasFocus() &&
+        selection.empty &&
+        selection.from === editor.view.posAtDOM(target, 0) &&
+        selection.$from.parent.type.name === "codeBlock" &&
+        selection.$from.parentOffset === 0 &&
+        getSelection()?.anchorNode === target &&
+        getSelection()?.anchorOffset === 0
+      );
+    });
+    stage = `${label}-programmer-tab-indent`;
     await page.keyboard.press("Tab");
     await page.waitForFunction(() =>
       document
@@ -1605,6 +1637,7 @@ try {
       (await firstContent.textContent()) === `  ${firstCode}`,
       "Tab插入两个空格",
     );
+    stage = `${label}-programmer-tab-outdent`;
     await page.keyboard.press("Shift+Tab");
     await page.waitForFunction(
       (expected) =>
@@ -1616,6 +1649,7 @@ try {
       (await firstContent.textContent()) === firstCode,
       "ShiftTab恢复原代码",
     );
+    stage = `${label}-programmer-escape-focus`;
     await page.keyboard.press("Escape");
     assert.ok(
       await first
@@ -1623,6 +1657,7 @@ try {
         .evaluate((el) => el === document.activeElement),
       "Esc移出代码编辑到块操作",
     );
+    stage = `${label}-programmer-exit-paragraph`;
     await first
       .getByRole("button", { name: "退出代码块", exact: true })
       .click();
@@ -1649,6 +1684,7 @@ try {
       !(await firstContent.textContent()).includes("代码之外的说明"),
       "退出文字不污染代码",
     );
+    stage = `${label}-programmer-save`;
     await saved(page);
     await audit(page, `${label}-programmer-code`, { editor: true });
     const persisted = await api(address, `/spaces/${codeSpace.id}`);
@@ -1720,6 +1756,7 @@ try {
         .evaluate((el) => el === document.activeElement)),
       "只读Tab继续正常导航",
     );
+    stage = `${label}-programmer-readonly-copy`;
     await readerFirst
       .getByRole("button", { name: "复制代码", exact: true })
       .click();
@@ -1735,6 +1772,7 @@ try {
     );
     await audit(page, `${label}-programmer-readonly`, { editor: true });
     await context.close();
+    programmerPage = undefined;
   }
   const tableTokens = ["姓名", "角色", "小一", "研发", "小二", "测试"];
   const tableHtml =
@@ -1915,6 +1953,60 @@ try {
     `PASS: ${records.length}组参考对照阅读/功能/axe检查；截图已遮罩链接、二维码、密码和网络地址。`,
   );
 } catch (error) {
+  if (programmerPage && !programmerPage.isClosed()) {
+    failureDiagnostics = await programmerPage
+      .evaluate(() => {
+        const blocks = [...document.querySelectorAll(".code-block-view")];
+        const editor = document.querySelector(".tiptap")?.editor;
+        const pmSelection = editor?.state.selection;
+        const pmNode = pmSelection
+          ? editor.view.domAtPos(pmSelection.from).node
+          : undefined;
+        const anchor = getSelection()?.anchorNode;
+        const selected =
+          anchor?.nodeType === Node.TEXT_NODE ? anchor.parentElement : anchor;
+        return {
+          documentFocused: document.hasFocus(),
+          editorFocused: editor?.view.hasFocus(),
+          editorSelectionEmpty: pmSelection?.empty,
+          editorSelectionNode: pmSelection?.$from.parent.type.name,
+          editorSelectionOffset: pmSelection?.$from.parentOffset,
+          editorSelectedBlock: blocks.findIndex(
+            (block) => pmNode && block.contains(pmNode),
+          ),
+          activeTag: document.activeElement?.tagName,
+          activeEditor: !!document.activeElement?.matches(".tiptap"),
+          selectedBlock: blocks.findIndex(
+            (block) => selected && block.contains(selected),
+          ),
+          selectedParagraph: !!(
+            selected instanceof Element && selected.closest(".tiptap p")
+          ),
+          blocks: blocks.map((block) => ({
+            language: block.getAttribute("data-language"),
+            highlighted: block.querySelectorAll('[class*="hljs-"]').length > 0,
+            textLength: block.querySelector("code[data-node-view-content]")
+              ?.textContent.length,
+            startsIndented: block
+              .querySelector("code[data-node-view-content]")
+              ?.textContent.startsWith("  const"),
+          })),
+        };
+      })
+      .catch(() => ({ unavailable: true }));
+    await programmerPage
+      .screenshot({
+        path: join(out, `${stage}-failure.png`),
+        fullPage: true,
+        animations: "disabled",
+        mask: [
+          programmerPage.locator(
+            'input[aria-label="仅查看链接"],input[aria-label="可编辑链接"],input[type="password"],.viewer-ip,[data-sensitive],.qr',
+          ),
+        ],
+      })
+      .catch(() => {});
+  }
   await report("failed");
   console.error(
     `FAIL: ${stage}，详见本地脱敏report.json。${
