@@ -466,22 +466,51 @@
 .usage-topic dl > div + div {
   margin-top: 28px;
 }
-.usage-topic dt {
+.usage-topic dt,
+.privacy-question dt {
   margin: 0 0 10px;
   font-size: var(--font-size-body);
   line-height: var(--line-height-body);
   font-weight: var(--font-weight-strong);
 }
-.usage-topic dd {
+.usage-topic dd,
+.privacy-question dd {
   margin: 0;
   color: var(--muted);
   font-size: var(--font-size-body);
   line-height: var(--line-height-body);
 }
+.privacy-guide {
+  margin-top: 56px;
+  padding-top: 40px;
+  border-top: 1px solid var(--border);
+  scroll-margin-top: 100px;
+}
+.privacy-guide h3 {
+  margin: 0 0 12px;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-strong);
+  line-height: var(--line-height-heading);
+}
+.privacy-questions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 32px 56px;
+  margin: 32px 0 0;
+}
+.privacy-question {
+  min-width: 0;
+}
 @media (max-width: 800px) {
-  .usage-guide-grid {
+  .usage-guide-grid,
+  .privacy-questions {
     grid-template-columns: minmax(0, 1fr);
     gap: 32px;
+  }
+  .privacy-guide {
+    margin-top: 40px;
+    padding-top: 32px;
+    scroll-margin-top: 88px;
   }
   .usage-guide > .section-head {
     margin-bottom: 28px;
@@ -667,7 +696,25 @@
   }
   .header-inner {
     gap: 16px;
+    flex-wrap: wrap;
   }
+  .home-bookmark .bookmark-label {
+    display: none;
+  }
+  .nav {
+    gap: 8px;
+  }
+  .nav .home-bookmark {
+    padding: 10px;
+  }
+  .nav > .btn {
+    flex: none;
+    white-space: nowrap;
+  }
+  .header-inner .nav {
+    margin-left: auto;
+  }
+
   .logo {
     font-size: var(--font-size-heading);
   }

@@ -111,6 +111,7 @@ export default function App() {
       | "password"
       | "retention"
       | "support"
+      | "bookmark"
       | "deletePage"
       | null
     >(null),
@@ -1322,19 +1323,10 @@ export default function App() {
       }
     }
     try {
-      if (navigator.share)
-        await navigator.share({
-          title: "2Space在线剪贴板",
-          text: "打开剪贴板",
-          url: link,
-        });
-      else {
-        await navigator.clipboard.writeText(link);
-        setNotice("链接已复制");
-      }
-    } catch (error) {
-      if (!(error instanceof DOMException && error.name === "AbortError"))
-        setNotice("分享未完成，请复制二维码下方的链接。");
+      await navigator.clipboard.writeText(link);
+      setNotice("链接已复制");
+    } catch {
+      setNotice("复制未成功，请手动复制二维码下方的链接。");
     }
   }
   async function supportShare(copyOnly = false) {
@@ -1397,6 +1389,7 @@ export default function App() {
           onCopy={(rich) => void copy(rich)}
           onDownload={download}
           onShare={() => void shareCurrent()}
+          onBookmark={() => setModal("bookmark")}
           onPassword={() => {
             setSpacePassword("");
             setModal("password");
@@ -1418,6 +1411,7 @@ export default function App() {
           onName={setSpaceName}
           onEnter={(name) => void createSpace(name)}
           onSupport={() => setModal("support")}
+          onBookmark={() => setModal("bookmark")}
           lockedName={lockedName}
           accessCode={accessCode}
           onCode={setAccessCode}
@@ -1461,13 +1455,15 @@ export default function App() {
                         ? "设置剪贴板密码"
                         : modal === "retention"
                           ? "设置保留时间"
-                          : modal === "support"
-                            ? "支持2Space"
-                            : modal === "share"
-                              ? "分享空间"
-                              : modal === "open"
-                                ? "打开空间"
-                                : "隐私说明"
+                          : modal === "bookmark"
+                            ? "添加浏览器书签"
+                            : modal === "support"
+                              ? "支持2Space"
+                              : modal === "share"
+                                ? "分享空间"
+                                : modal === "open"
+                                  ? "打开空间"
+                                  : "隐私说明"
             }
             onClick={(event) => event.stopPropagation()}
           >
@@ -1657,6 +1653,57 @@ export default function App() {
                   </button>
                 </div>
               </form>
+            ) : modal === "bookmark" ? (
+              <>
+                <h2>{access ? "收藏这个剪贴板" : "收藏2Space首页"}</h2>
+                <p>按下面的方法，在浏览器中确认保存，下次从书签直接打开。</p>
+                <dl className="bookmark-steps">
+                  <div>
+                    <dt>电脑</dt>
+                    <dd>
+                      Mac 按 <kbd>⌘</kbd> + <kbd>D</kbd>；Windows / Linux 按{" "}
+                      <kbd>Ctrl</kbd> + <kbd>D</kbd>。
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>iPhone / iPad</dt>
+                    <dd>
+                      在 Safari
+                      的页面菜单或分享菜单中，选择“添加书签”或“加入个人收藏”。
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Android</dt>
+                    <dd>打开浏览器菜单，选择“添加书签”或点亮星标。</dd>
+                  </div>
+                </dl>
+                {access && (
+                  <p className="bookmark-privacy">
+                    书签会保存当前完整链接。共用或同步浏览器账号时，请确认哪些人能看到。
+                  </p>
+                )}
+                <div className="foot">
+                  <button
+                    className="btn ghost"
+                    onClick={() => {
+                      void navigator.clipboard
+                        .writeText(location.href)
+                        .then(() => setNotice("页面链接已复制"))
+                        .catch(() =>
+                          setNotice("复制未成功，请从地址栏手动复制链接。"),
+                        );
+                    }}
+                  >
+                    复制当前页链接
+                  </button>
+                  <button
+                    className="btn primary"
+                    onClick={() => setModal(null)}
+                  >
+                    知道了
+                  </button>
+                </div>
+              </>
             ) : modal === "support" ? (
               <>
                 <h2>支持2Space</h2>

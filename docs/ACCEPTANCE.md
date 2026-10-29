@@ -262,3 +262,17 @@ PR2提交787c3d8的pull_request运行40827314976完整通过，同head的push运
 最终typecheck、50单元/集成、70组浏览器阅读/功能/axe与23项本地Docker smoke通过。实际查看desktop/narrow-empty-code-block，并在3210新建独立合成空间检查空代码块已保存且无正文提示。实际审查桌面及390px使用小抄，截图位于output/2space-usage-guide*.png与2space-empty-code-fixed.png。此前实体手机、其他浏览器、原生缩放与独立审计边界保持。
 
 更新前数据库在线快照与可用旧镜像标签保留在output/backups/before-guide-code-1793258695及对应标签；integrity ok。更新前后原19空间/23页/2分享全部字段摘要一致，随后才创建独立代码测试空间。未读取或覆盖用户正文、未清卷、未部署公网。
+
+### 隐私问答、纯链接分享与浏览器收藏（2026-10-29）
+
+用户在同一迭代连续授权3项工作，全部保留：新增隐私FAQ；修复系统分享复制附加“打开剪贴板”导致链接无效；首页及剪贴板增加收藏入口。
+
+隐私区位于原使用小抄下方，7项常显问答，桌面两栏/800px以下单列，正文16px。文案对照当前SECURITY与实际publicKey、密码会话、草稿、访问统计实现：说明保护措施、按名称创建时服务提供方仍具备读取能力、链接/二维码的全部记事本范围、共用设备/浏览器插件/历史/剪贴板/下载残留、删除/到期/改密码无法清除副本、访问记录与本次IP，以及敏感信息禁放范围。未声称绝对安全或服务器不可读取，未引入维护信息/无关统计宣告，也未改变任何安全能力。
+
+原shareCurrent向navigator.share传递text“打开剪贴板”，系统分享菜单的复制操作可能将其拼接到URL。新增浏览器fixture模拟该拼接，旧实现先失败。现在工作区分享直接writeText纯URL；public保留当前readonly模式，旧private owner仍复制独立reader链接，不泄露owner能力。回归在1280/390/320实际读取剪贴板并打开复制的public链接，保留private owner/reader的独立权限断言。
+
+首页和工作区新增收藏按钮，统一对话框提供Mac/Windows快捷键及iPhone/Android浏览器菜单方法、复制当前页链接与手动确认说明；不会通过不存在的接口声称已添加书签。收藏剪贴板时明示完整链接会被书签保存，以及共用/同步账号的访问风险。操作依据Chrome官方书签说明 https://support.google.com/chrome/answer/188842 与Safari说明 https://support.apple.com/guide/iphone/iph42ab2f3a7/ios 。浏览器保留最终收藏确认；未替用户实际创建或同步浏览器书签。
+
+最终typecheck、50项单元/集成、格式/字阶/文案检查、76组Chromium阅读/功能/axe通过；新增6组收藏弹窗覆盖桌面/390/320。看图发现320px首页按钮折行，已通过按钮不换行和顶部可重排修复；复跑76组通过。实际查看narrow-home-bookmark、mobile-workspace-bookmark，另在3210浏览器检查隐私正文、首页/工作区收藏和点击分享的“链接已复制”结果。截图output/2space-bookmark-entry.png。跨实体设备、真实系统分享菜单、原生缩放、Safari/Firefox与完整安全审计仍未验收；模拟系统拼接与真实Chromium剪贴板结果已区分。
+
+本地Docker已更新且健康，23项smoke通过。数据库快照与旧镜像保留在output/backups/before-privacy-share-bookmark-1793260937及对应标签；integrity ok。更新前后原23空间/28页/2分享全部字段摘要一致，此后才创建独立分享演示。未读取或覆盖用户正文、未清卷、未部署公网。

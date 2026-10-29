@@ -856,6 +856,37 @@ pre:focus-visible,
   font-size: var(--font-size-secondary);
   line-height: var(--line-height-body);
 }
+.bookmark-steps {
+  margin: 24px 0;
+}
+.bookmark-steps > div + div {
+  margin-top: 20px;
+}
+.bookmark-steps dt {
+  margin-bottom: 6px;
+  font-size: var(--font-size-secondary);
+  font-weight: var(--font-weight-strong);
+}
+.bookmark-steps dd {
+  margin: 0;
+  font-size: var(--font-size-body);
+  color: var(--muted);
+  line-height: var(--line-height-body);
+}
+.bookmark-steps kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-family-body);
+  font-size: inherit;
+}
+.bookmark-privacy {
+  padding: 12px;
+  background: var(--brand-050);
+  border-radius: 8px;
+}
 .support-actions {
   display: flex;
   flex-wrap: wrap;
@@ -996,11 +1027,11 @@ pre:focus-visible,
   .actions {
     width: 100%;
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
   }
   .actions .btn {
-    padding: 10px 6px;
+    padding: 10px 4px;
   }
   .actions .icon {
     display: none;

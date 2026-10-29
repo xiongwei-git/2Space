@@ -26,6 +26,49 @@ const startedAt = new Date().toISOString();
 let stage = "startup";
 let programmerPage;
 let failureDiagnostics;
+// Reproduce a native share sheet's "copy" result, which may append share text.
+async function assertPlainShare(page, expectedLink) {
+  const close = page.getByRole("button", { name: "关闭提示", exact: true });
+  if (await close.count()) await close.click();
+  await page.evaluate(async () => {
+    window.__nativeShareCopyCompleted = false;
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async (data) => {
+        await navigator.clipboard.writeText(
+          `${data.url} ${data.text || data.title || ""}`.trim(),
+        );
+        window.__nativeShareCopyCompleted = true;
+      },
+    });
+    await navigator.clipboard.writeText("");
+  });
+  await page
+    .locator(".actions")
+    .getByRole("button", { name: "分享", exact: true })
+    .click();
+  await page.waitForFunction(
+    () =>
+      window.__nativeShareCopyCompleted ||
+      document.querySelector(".toast")?.textContent.includes("链接已复制"),
+  );
+  const copied = await page.evaluate(() => navigator.clipboard.readText());
+  assert.ok(
+    copied === expectedLink,
+    "分享复制纯链接，不附加打开剪贴板等说明文字",
+  );
+  if (!new URL(copied).hash) {
+    const reopened = await page.context().newPage();
+    await reopened.goto(copied);
+    await workspace(reopened);
+    assert.equal(
+      await reopened.locator(".tiptap").getAttribute("contenteditable"),
+      new URL(copied).searchParams.has("readonly") ? "false" : "true",
+      "复制的纯链接可直接打开且保留页面模式",
+    );
+    await reopened.close();
+  }
+}
 async function report(status) {
   await writeFile(
     join(out, "report.json"),
@@ -235,7 +278,7 @@ async function audit(
           ".sidebar-heading > span,.page-number,.character-count,.site-footer .version,.board-footer .version,.home-footer .version",
         );
         const isBody = el.closest(
-          ".hero-sub,.hero-promise,.demo-document p,.demo-document li,.format-sample p,.privacy-callout p,.section-head p,.step p,.feature p,.case p,.usage-topic dd,.support-card p:not(.support-note),.home-footer p,.preview-paper p,.editor-placeholder,.tiptap p,.tiptap li,.tiptap pre,.modal p:not(.muted),.modal li,.conflict-banner p",
+          ".hero-sub,.hero-promise,.demo-document p,.demo-document li,.format-sample p,.privacy-callout p,.section-head p,.step p,.feature p,.case p,.usage-topic dd,.privacy-question dd,.support-card p:not(.support-note),.home-footer p,.preview-paper p,.editor-placeholder,.tiptap p,.tiptap li,.tiptap pre,.modal p:not(.muted),.modal li,.bookmark-steps dd,.conflict-banner p",
         );
         const min = (isBody ? 16 : isMeta ? 12 : 14) * scale;
         if (size + 0.1 < min) failures.push(`${cls}: ${size}px < ${min}px`);
@@ -600,11 +643,25 @@ try {
       3,
       "使用小抄按三个使用时机组织",
     );
-    assert.equal(await page.locator("#faq dt").count(), 6, "六个具体疑问");
     assert.equal(
-      await page.locator("#faq dd:visible").count(),
+      await page.locator("#faq .usage-topic dt").count(),
+      6,
+      "六个具体疑问",
+    );
+    assert.equal(
+      await page.locator("#faq .usage-topic dd:visible").count(),
       6,
       "答案直接可读，无需逐个展开",
+    );
+    assert.equal(
+      await page.locator("#privacy-faq dt").count(),
+      7,
+      "七项隐私与泄露风险问答",
+    );
+    assert.equal(
+      await page.locator("#privacy-faq dd:visible").count(),
+      7,
+      "隐私保护范围与风险直接可读",
     );
     if (label === "desktop") {
       const hero = await page.locator(".hero-layout").evaluate((el) => {
@@ -647,6 +704,21 @@ try {
       await page.getByRole("button", { name: /进入剪贴板/ }).waitFor();
     }
     await audit(page, `${label}-reference-home`);
+    await page.getByRole("button", { name: "收藏首页", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "添加浏览器书签", exact: true })
+      .waitFor();
+    await audit(page, `${label}-home-bookmark`, { modal: true });
+    await page
+      .getByRole("button", { name: "复制当前页链接", exact: true })
+      .click();
+    assert.ok(
+      (await page.evaluate(() => navigator.clipboard.readText())) ===
+        page.url(),
+      "首页收藏辅助复制当前地址",
+    );
+    await page.getByRole("button", { name: "知道了", exact: true }).click();
+
     await page.getByText("隐私政策", { exact: true }).click();
     await page.getByText("使用条款", { exact: true }).click();
     await audit(page, `${label}-reference-faq-privacy`);
@@ -782,6 +854,19 @@ try {
       "仅查看为显式页面模式",
     );
     await audit(page, `${label}-reference-editor`, { editor: true });
+    await page
+      .getByRole("button", { name: "收藏当前剪贴板", exact: true })
+      .click();
+    await audit(page, `${label}-workspace-bookmark`, { modal: true });
+    await page
+      .getByRole("button", { name: "复制当前页链接", exact: true })
+      .click();
+    assert.ok(
+      (await page.evaluate(() => navigator.clipboard.readText())) === publicUrl,
+      "收藏辅助复制保留当前剪贴板地址",
+    );
+    await page.getByRole("button", { name: "知道了", exact: true }).click();
+
     if (label === "desktop") {
       await page
         .getByRole("toolbar", { name: "文字与代码", exact: true })
@@ -888,6 +973,7 @@ try {
         `${publicUrl}?readonly`,
       "查看链接复制",
     );
+    await assertPlainShare(page, publicUrl);
     await page.goto(`${publicUrl}?readonly`);
     await workspace(page);
     assert.equal(
@@ -900,6 +986,7 @@ try {
       0,
       "仅查看隐藏编辑设置",
     );
+    await assertPlainShare(page, `${publicUrl}?readonly`);
     await audit(page, `${label}-reference-readonly`, { editor: true });
     await page.goto(publicUrl);
     await workspace(page);
@@ -1335,10 +1422,7 @@ try {
       "旧private读者不显示编辑能力",
     );
     await audit(page, `${label}-reference-private-readonly`, { editor: true });
-    await page
-      .locator(".actions")
-      .getByRole("button", { name: /分享/ })
-      .click();
+    await assertPlainShare(page, oldReaderUrl);
     await page.locator(".toast").filter({ hasText: "链接已复制" }).waitFor();
     assert.ok(
       (await page.evaluate(() => navigator.clipboard.readText())) ===
@@ -1347,10 +1431,24 @@ try {
     );
     await page.goto(ownerUrl);
     await workspace(page);
+    await page.evaluate(() => {
+      window.__nativeOwnerShareUsed = false;
+      Object.defineProperty(navigator, "share", {
+        configurable: true,
+        value: async () => {
+          window.__nativeOwnerShareUsed = true;
+        },
+      });
+    });
     await page
       .locator(".actions")
       .getByRole("button", { name: /分享/ })
       .click();
+    assert.equal(
+      await page.evaluate(() => window.__nativeOwnerShareUsed),
+      false,
+      "旧private owner也直接复制，不交给系统拼接文字",
+    );
     await page.locator(".toast").filter({ hasText: "链接已复制" }).waitFor();
     const safeShared = await page.evaluate(() =>
       navigator.clipboard.readText(),

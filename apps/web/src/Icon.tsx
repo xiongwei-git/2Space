@@ -1,4 +1,5 @@
 const paths: Record<string, string[]> = {
+  bookmark: ["M6 3h12v18l-6-4-6 4z"],
   clipboard: [
     "M9 5H6a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3",
     "M9 3h6v4H9z",

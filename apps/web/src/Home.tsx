@@ -95,12 +95,43 @@ const usageTopics = [
     ],
   },
 ];
+const privacyQuestions = [
+  [
+    "有哪些基本保护？",
+    "可以设置访问密码；设置后，长时间不操作会锁定页面。粘贴时会清理脚本等危险内容，代码只展示、不会执行。已经解锁的页面仍可能被旁人看到。",
+  ],
+  [
+    "服务提供方能读取我的内容吗？",
+    "可以。按名称创建的剪贴板会把内容保存在服务器，服务提供方具备读取能力。密码用于限制访问，不能阻止服务提供方读取，也不能消除服务被入侵的风险。",
+  ],
+  [
+    "链接或二维码被转发，有什么风险？",
+    "按名称使用的剪贴板，未设密码时，知道名称的人可以查看和修改全部记事本。链接和二维码可以被继续转发，分享前请检查所有记事本；名称中不要放姓名、手机号等个人信息。",
+  ],
+  [
+    "共用设备和浏览器插件，会带来风险吗？",
+    "会。打开的页面、浏览器历史、剪贴板和下载文件都可能留下内容或入口，未保存的修改也可能暂存在浏览器中。恶意插件、受感染的设备或屏幕共享也可能泄露内容。用完共用设备后，请关闭页面并清理相关记录。",
+  ],
+  [
+    "删除、到期或改密码后，内容就彻底消失了吗？",
+    "不能保证。删除或到期会移除剪贴板中的内容，但他人已复制、下载或截图的内容无法收回，浏览器和备份中也可能保留副本。更改密码不能清除这些副本，删除也不代表所有副本立即消失。",
+  ],
+  [
+    "还会留下哪些访问信息？",
+    "会记录剪贴板的创建、修改、最近访问时间和查看次数，页面也会显示本次访问IP。不需要账号，不等于访问过程不会留下记录。",
+  ],
+  [
+    "哪些个人信息不适合放在这里？",
+    "请勿存放账号密码、验证码、证件号码、银行卡信息或未获授权的客户资料。只放确实需要临时中转的内容，使用后及时删除；重要资料请另行备份。",
+  ],
+];
 interface Props {
   busy: boolean;
   name: string;
   onName: (value: string) => void;
   onEnter: (name: string) => void;
   onSupport: () => void;
+  onBookmark: () => void;
   lockedName: string;
   accessCode: string;
   onCode: (value: string) => void;
@@ -112,6 +143,7 @@ export default function Home({
   onName,
   onEnter,
   onSupport,
+  onBookmark,
   lockedName,
   accessCode,
   onCode,
@@ -139,6 +171,14 @@ export default function Home({
             <a className="nav-link support-link" href="#support">
               ♥ 支持我们
             </a>
+            <button
+              className="btn ghost home-bookmark"
+              onClick={onBookmark}
+              aria-label="收藏首页"
+            >
+              <Icon name="bookmark" />
+              <span className="bookmark-label">收藏</span>
+            </button>
             <button
               className="btn primary"
               onClick={() => onEnter(randomExperienceName())}
@@ -408,6 +448,24 @@ export default function Home({
                 </article>
               ))}
             </div>
+            <section
+              className="privacy-guide"
+              aria-labelledby="privacy-guide-title"
+              id="privacy-faq"
+            >
+              <div className="section-head">
+                <h3 id="privacy-guide-title">隐私与安全</h3>
+                <p>先了解保护的范围，再决定放什么、分享给谁。</p>
+              </div>
+              <dl className="privacy-questions">
+                {privacyQuestions.map(([question, answer]) => (
+                  <div className="privacy-question" key={question}>
+                    <dt>{question}</dt>
+                    <dd>{answer}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
           </div>
         </section>
         <section className="home-section" id="support">

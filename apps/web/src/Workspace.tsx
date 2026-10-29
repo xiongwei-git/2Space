@@ -33,6 +33,7 @@ interface Props {
   onCopy: (rich?: boolean) => void;
   onDownload: () => void;
   onShare: () => void;
+  onBookmark: () => void;
   onPassword: () => void;
   onRetention: () => void;
   onNotice: (value: string) => void;
@@ -172,6 +173,13 @@ export default function Workspace(p: Props) {
           </a>
         </div>
         <div className="actions">
+          <button
+            className="btn ghost"
+            onClick={p.onBookmark}
+            aria-label="收藏当前剪贴板"
+          >
+            <Icon name="bookmark" /> 收藏
+          </button>
           <button className="btn ghost" onClick={() => p.onCopy(true)}>
             <Icon name="copy" /> 复制内容
           </button>
