@@ -1707,6 +1707,7 @@ try {
       status: 201,
     });
     const context = await browser.newContext({
+      locale: "zh-CN",
       permissions: ["clipboard-read", "clipboard-write"],
     });
     const page = await context.newPage();
