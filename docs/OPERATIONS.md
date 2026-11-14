@@ -107,7 +107,6 @@ public默认永久（retentionSeconds=0，响应expiresAt=null）；非零有30�
 
 本轮已核对全部容器引用，删除本项目10个无引用的`2space:before-*`标签；`2space:local`、现用开发镜像、基础镜像和其他项目未动。不使用force或全局prune，不重启容器、不删除卷或数据库备份。清理后运行容器healthy，`/api/health`返回ok。
 
-
 ## 2space.cn 公网部署（2026-10-30）
 
 本次用户已明确授权公网部署，实际配置与验证见 [生产部署记录](PRODUCTION-20261030.md)。本地 compose.yaml 和本地数据保持原样，生产采用独立数据卷。HTTPS 入口必须设置 COOKIE_SECURE=true，并为 v3 全空间原子重加密保留大于 3,300,000 字节的代理请求上限及 SSE 非缓冲转发。

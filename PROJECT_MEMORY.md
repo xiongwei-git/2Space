@@ -125,7 +125,6 @@ T10/T11/T12已交付并停写。统一BrandMark恢复f8962f5双格几何，Home/
 
 用户指出开发阶段不需要保留历史镜像。已删除10个无容器引用的2space:before-*标签；2space:local及当前开发镜像保留，数据卷、备份、其他项目未动，容器未重启且health ok。后续不再逐轮创建/积累历史镜像，按Git提交重建回退；数据备份单独处理。当前规则已写AGENTS/OPERATIONS，覆盖旧验收文档的镜像保留惯例。
 
-
 ## 2space.cn 首次生产交付（2026-10-30）
 
 用户已明确授权在HWN-Singapore-01使用Docker、Nginx、SSLManager上线2space.cn，覆盖此前仅本地验收的历史授权范围。本次生产基线d8f7661加最小可信反代适配；新TRUSTED_PROXIES默认不信任转发头，仅部署时配置精确代理地址，3项先红后绿回归及全部33后端测试/typecheck/build通过。源代码和测试留在当前工作区，未提交/推送；不要只用HEAD代表生产制品。

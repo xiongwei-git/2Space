@@ -577,11 +577,9 @@ export async function buildApp(options: AppOptions = {}) {
         signature: data.signature,
       };
     } catch {
-      return reply
-        .code(502)
-        .send({
-          error: { code: "WECHAT_UNAVAILABLE", message: "微信分享暂时不可用" },
-        });
+      return reply.code(502).send({
+        error: { code: "WECHAT_UNAVAILABLE", message: "微信分享暂时不可用" },
+      });
     }
   });
   app.get("/api/health", async () => ({ status: "ok", version: "1.0.0" }));
