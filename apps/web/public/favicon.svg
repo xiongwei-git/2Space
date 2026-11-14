@@ -1,0 +1,27 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="-3 -6 44 44"
+  fill="none"
+  data-brand-mark="2space-dual"
+>
+  <g transform="rotate(-8 19.5 16.5)" stroke="#3159DB" stroke-width="2">
+    <rect
+      data-brand-panel="first"
+      x="1"
+      y="1"
+      width="15"
+      height="24"
+      rx="3"
+      fill="#EAF0FF"
+    />
+    <rect
+      data-brand-panel="second"
+      x="22"
+      y="8"
+      width="15"
+      height="24"
+      rx="3"
+      fill="#3159DB"
+    />
+  </g>
+</svg>

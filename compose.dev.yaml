@@ -1,0 +1,36 @@
+# 独立开发配置：docker compose -f compose.dev.yaml up --build
+name: 2space-dev
+services:
+  app:
+    build:
+      context: .
+      target: development
+    init: true
+    ports:
+      - "127.0.0.1:3210:3210"
+      - "127.0.0.1:5173:5173"
+    environment:
+      NODE_ENV: development
+      HOST: 0.0.0.0
+      PORT: "3210"
+      DB_PATH: /data/2space.sqlite
+      API_PROXY_TARGET: http://127.0.0.1:3210
+    volumes:
+      - .:/app
+      - dev-dependencies:/app/node_modules
+      - dev-web-dependencies:/app/apps/web/node_modules
+      - dev-server-dependencies:/app/apps/server/node_modules
+      - dev-web-dist:/app/apps/web/dist
+      - dev-server-dist:/app/apps/server/dist
+      - dev-data:/data
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+volumes:
+  dev-dependencies:
+  dev-web-dependencies:
+  dev-server-dependencies:
+  dev-web-dist:
+  dev-server-dist:
+  dev-data:
