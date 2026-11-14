@@ -31,6 +31,21 @@ export default function Editor({
         role: "textbox",
         "aria-multiline": "true",
       },
+      handleDOMEvents: {
+        click: (view, event) => {
+          if (!view.editable || event.button !== 0) return false;
+          const link =
+            event.target instanceof Element
+              ? event.target.closest<HTMLAnchorElement>("a[href]")
+              : null;
+          if (!link || !view.dom.contains(link)) return false;
+          if (!["https:", "http:", "mailto:"].includes(link.protocol))
+            return false;
+          event.preventDefault();
+          window.open(link.href, "_blank", "noopener,noreferrer");
+          return true;
+        },
+      },
       transformPastedHTML: (value) => {
         if (/<img\b|<svg\b/i.test(value))
           onNotice("图片不会粘贴，文字和常用格式已保留。");

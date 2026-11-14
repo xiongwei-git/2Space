@@ -1644,6 +1644,63 @@ try {
   await unavailablePage.locator(".page-error,.error-banner").waitFor();
   await audit(unavailablePage, "mobile-reference-private-unavailable");
   await unavailableContext.close();
+  stage = "pasted-link-navigation";
+  {
+    const name = `link-${randomBytes(4).toString("hex")}`;
+    await api(address, "/spaces", {
+      method: "POST",
+      body: {
+        accessMode: "public",
+        name,
+        publicKey: key.toString("base64url"),
+        ownerToken: randomBytes(32).toString("base64url"),
+        page: {
+          id: randomUUID(),
+          payload: envelopeForDocument({
+            title: "链接验收",
+            html: "<p></p>",
+            text: "",
+            language: "plaintext",
+          }),
+        },
+      },
+      status: 201,
+    });
+    const context = await browser.newContext({
+      permissions: ["clipboard-read", "clipboard-write"],
+    });
+    const page = await context.newPage();
+    const destination = "https://example.com/pasted?note=1#target";
+    await context.route(destination, (route) =>
+      route.fulfill({ contentType: "text/plain", body: "链接目标" }),
+    );
+    await page.goto(`${address}/${name}`);
+    await workspace(page);
+    await pasteRich(
+      page,
+      `<p><a href="${destination}">网页标题</a></p>`,
+      destination,
+    );
+    for (const readOnly of [false, true]) {
+      if (readOnly) {
+        await saved(page);
+        await page.goto(`${address}/${name}?readonly`);
+        await workspace(page);
+      }
+      const link = page
+        .locator(".tiptap")
+        .getByRole("link", { name: "网页标题" });
+      assert.equal(await link.getAttribute("href"), destination);
+      const popupPromise = context.waitForEvent("page", { timeout: 3000 });
+      await link.click();
+      const popup = await popupPromise;
+      await popup.waitForURL(destination);
+      assert.equal(await popup.evaluate(() => window.opener), null);
+      await popup.close();
+    }
+    console.log("PASS: pasted-link-navigation");
+    await context.close();
+  }
   // Programmer-friendly editor: real keyboard, per-block clipboard, paste, and old-data display.
   const firstCode = "const answer = 42;\n  console.log(answer);\n";
   const secondCode = `print("${"second".repeat(40)}")\n`;
