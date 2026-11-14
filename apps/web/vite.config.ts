@@ -6,5 +6,14 @@ export default defineConfig({
     host: "127.0.0.1",
     proxy: { "/api": process.env.API_PROXY_TARGET || "http://127.0.0.1:3210" },
   },
-  build: { chunkSizeWarningLimit: 600 },
+  build: {
+    chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      input: {
+        main: "index.html",
+        wechatShare: "wechat-share.html",
+        notFound: "404.html",
+      },
+    },
+  },
 });

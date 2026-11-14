@@ -604,6 +604,7 @@ try {
   ]) {
     stage = `${label}-home-setup`;
     const context = await browser.newContext({
+      locale: "zh-CN",
       viewport: { width, height },
       reducedMotion: "reduce",
       permissions: ["clipboard-read", "clipboard-write"],
@@ -645,12 +646,12 @@ try {
     );
     assert.equal(
       await page.locator("#faq .usage-topic dt").count(),
-      6,
-      "六个具体疑问",
+      7,
+      "七个具体疑问",
     );
     assert.equal(
       await page.locator("#faq .usage-topic dd:visible").count(),
-      6,
+      7,
       "答案直接可读，无需逐个展开",
     );
     assert.equal(
@@ -739,6 +740,35 @@ try {
     await page.getByText("隐私政策", { exact: true }).click();
     await page.getByText("使用条款", { exact: true }).click();
     await audit(page, `${label}-reference-faq-privacy`);
+    const protection = page.locator(".protection-explainer");
+    const illustrations = protection.locator(".protection-flow img");
+    assert.equal(await illustrations.count(), 3);
+    for (const illustration of await illustrations.all()) {
+      await illustration.scrollIntoViewIfNeeded();
+      await illustration.evaluate((img) => img.decode());
+    }
+    await protection.screenshot({
+      path: join(out, `${label}-encryption-comic.png`),
+      animations: "disabled",
+      style:
+        ".site-header { position: static; } .toast { visibility: hidden; }",
+    });
+
+    const technicalDetails = protection.locator("details");
+    assert.equal(await technicalDetails.getAttribute("open"), null);
+    await technicalDetails.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    assert.equal(await technicalDetails.getAttribute("open"), "");
+    await audit(page, `${label}-protection-details`);
+    await protection.screenshot({
+      path: join(out, `${label}-protection-preview.png`),
+      animations: "disabled",
+      style:
+        ".site-header { position: static; } .toast { visibility: hidden; }",
+    });
+    await page.keyboard.press("Enter");
+    assert.equal(await technicalDetails.getAttribute("open"), null);
+
     await page
       .getByRole("button", { name: "♥ 支持2Space", exact: true })
       .click();
@@ -1033,6 +1063,7 @@ try {
   }
   stage = "reference-random-entry";
   const randomContext = await browser.newContext({
+      locale: "zh-CN",
       viewport: { width: 1280, height: 900 },
       reducedMotion: "reduce",
     }),
@@ -1048,6 +1079,7 @@ try {
   await randomContext.close();
   stage = "reference-dark-setup";
   const darkContext = await browser.newContext({
+      locale: "zh-CN",
       viewport: { width: 1280, height: 900 },
       reducedMotion: "reduce",
       colorScheme: "dark",
@@ -1068,6 +1100,7 @@ try {
   await darkContext.close();
   stage = "reference-tabs-setup";
   const editContext = await browser.newContext({
+    locale: "zh-CN",
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
     permissions: ["clipboard-read", "clipboard-write"],
@@ -1196,6 +1229,7 @@ try {
   stage = "reference-new-readonly-setup";
   const newReadName = `new-read-${randomBytes(4).toString("hex")}`;
   const newReadContext = await browser.newContext({
+      locale: "zh-CN",
       viewport: { width: 390, height: 844 },
       reducedMotion: "reduce",
     }),
@@ -1230,6 +1264,7 @@ try {
     body: { password },
   });
   const passwordContext = await browser.newContext({
+      locale: "zh-CN",
       viewport: { width: 390, height: 844 },
       reducedMotion: "reduce",
     }),
@@ -1307,6 +1342,7 @@ try {
     body: { password: dirtyPassword },
   });
   const dirtyContext = await browser.newContext({
+      locale: "zh-CN",
       viewport: { width: 390, height: 844 },
       reducedMotion: "reduce",
     }),
@@ -1422,6 +1458,7 @@ try {
     ["mobile", 390],
   ]) {
     const context = await browser.newContext({
+        locale: "zh-CN",
         viewport: { width, height: 900 },
         reducedMotion: "reduce",
         permissions: ["clipboard-read", "clipboard-write"],
@@ -1517,6 +1554,7 @@ try {
       cipher.getAuthTag(),
     ]);
   const legacyContext = await browser.newContext({
+      locale: "zh-CN",
       viewport: { width: 390, height: 844 },
       reducedMotion: "reduce",
     }),
@@ -1598,6 +1636,7 @@ try {
     status: 201,
   });
   const compactContext = await browser.newContext({
+      locale: "zh-CN",
       viewport: { width: 390, height: 844 },
       reducedMotion: "reduce",
     }),
@@ -1634,6 +1673,7 @@ try {
   await compactContext.close();
   stage = "reference-private-unavailable";
   const unavailableContext = await browser.newContext({
+      locale: "zh-CN",
       viewport: { width: 390, height: 844 },
       reducedMotion: "reduce",
     }),
@@ -1675,6 +1715,7 @@ try {
       status: 201,
     });
     const context = await browser.newContext({
+        locale: "zh-CN",
         viewport: { width, height: 900 },
         reducedMotion: "reduce",
         permissions: ["clipboard-read", "clipboard-write"],
@@ -2023,6 +2064,7 @@ try {
       status: 201,
     });
     const context = await browser.newContext({
+        locale: "zh-CN",
         viewport: { width, height: 900 },
         reducedMotion: "reduce",
         permissions: ["clipboard-read", "clipboard-write"],
@@ -2116,6 +2158,7 @@ try {
     status: 201,
   });
   const legacyContext2 = await browser.newContext({
+      locale: "zh-CN",
       viewport: { width: 390, height: 844 },
       reducedMotion: "reduce",
     }),

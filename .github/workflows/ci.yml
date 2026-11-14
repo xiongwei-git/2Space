@@ -37,9 +37,13 @@ jobs:
             output/protection-acceptance/
           retention-days: 7
           if-no-files-found: ignore
-      - run: docker build --target production --tag 2space:ci .
-      - name: Docker API acceptance
-        run: |
-          docker run -d --name 2space-ci -p 127.0.0.1:3210:3210 2space:ci
-          trap 'docker stop 2space-ci' EXIT
-          node scripts/acceptance.mjs
+      - name: One-command Docker deployment
+        run: docker compose up --build --detach --wait --wait-timeout 90
+      - name: Docker API and restart acceptance
+        run: ACCEPTANCE_RESTART=1 node scripts/acceptance.mjs
+      - name: Docker logs
+        if: failure()
+        run: docker compose logs --tail=60 app
+      - name: Stop Docker deployment
+        if: always()
+        run: docker compose down

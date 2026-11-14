@@ -1,0 +1,8 @@
+{
+  "source": "current local built app; isolated temporary database",
+  "synthetic": true,
+  "productionDataAccess": false,
+  "images": 4,
+  "headlessBrowser": "Chromium",
+  "capturedAt": "2026-10-30T06:05:49.068Z"
+}

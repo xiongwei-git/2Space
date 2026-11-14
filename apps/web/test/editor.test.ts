@@ -16,6 +16,9 @@ async function fixture(content: string) {
     "<!doctype html><html><body><div id='react-root'></div></body></html>",
     { url: "http://localhost/", pretendToBeVisual: true },
   );
+  Object.defineProperty(dom.window.navigator, "languages", {
+    value: ["zh-CN"],
+  });
   const writes: string[] = [];
   Object.defineProperty(dom.window.navigator, "clipboard", {
     value: {

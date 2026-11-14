@@ -99,6 +99,8 @@ export interface AppOptions {
   cleanupIntervalMs?: number;
   webDist?: string;
   rateLimit?: number;
+  trustedProxies?: string[];
+  wechatFetch?: typeof fetch;
 }
 class ApiFailure extends Error {
   constructor(
@@ -278,7 +280,11 @@ export async function buildApp(options: AppOptions = {}) {
     db.close();
     throw error;
   }
-  const app = Fastify({ logger: false, bodyLimit: 560_000, trustProxy: false });
+  const app = Fastify({
+    logger: false,
+    bodyLimit: 560_000,
+    trustProxy: options.trustedProxies ?? false,
+  });
   const streams = new Map<string, Set<Stream>>();
   const rates = new Map<string, { count: number; start: number }>();
   const createRates = new Map<string, { count: number; start: number }>();
@@ -480,7 +486,7 @@ export async function buildApp(options: AppOptions = {}) {
       .header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
       .header(
         "Content-Security-Policy",
-        "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'",
+        `default-src 'none'; script-src 'self'${req.url === "/wechat-share.html" ? " https://res.wx.qq.com/open/js/jweixin-1.6.0.js" : ""}; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'; object-src 'none'`,
       );
     if (req.url.startsWith("/api/"))
       limit(rates, req.ip, options.rateLimit ?? 600, 60_000);
@@ -533,6 +539,50 @@ export async function buildApp(options: AppOptions = {}) {
               : "暂时无法完成操作，请重试",
       },
     });
+  });
+  app.get("/api/wechat/jssdk", async (req, reply) => {
+    const query = req.query as Record<string, unknown>;
+    // Never forward a workspace URL, query string, fragment, cookie or credential.
+    const pageUrl = "https://2space.cn/wechat-share.html";
+    if (Object.keys(query).length !== 1 || query.url !== pageUrl)
+      return reply
+        .code(400)
+        .send({ error: { code: "INVALID_URL", message: "分享页面地址无效" } });
+    try {
+      const upstream = new URL(
+        "https://wereadnotes.tedxiong.com/api/wechat/jssdk",
+      );
+      upstream.searchParams.set("url", pageUrl);
+      const response = await (options.wechatFetch ?? fetch)(upstream, {
+        signal: AbortSignal.timeout(8000),
+        redirect: "error",
+        headers: { Accept: "application/json" },
+      });
+      if (!response.ok) throw new Error("Signing unavailable");
+      const data = (await response.json()) as Record<string, unknown>;
+      if (
+        typeof data.appId !== "string" ||
+        !/^wx[a-f0-9]{16}$/i.test(data.appId) ||
+        !Number.isSafeInteger(data.timestamp) ||
+        typeof data.nonceStr !== "string" ||
+        !/^[a-zA-Z0-9_-]{1,128}$/.test(data.nonceStr) ||
+        typeof data.signature !== "string" ||
+        !/^[a-f0-9]{40}$/.test(data.signature)
+      )
+        throw new Error("Invalid signing response");
+      return {
+        appId: data.appId,
+        timestamp: data.timestamp,
+        nonceStr: data.nonceStr,
+        signature: data.signature,
+      };
+    } catch {
+      return reply
+        .code(502)
+        .send({
+          error: { code: "WECHAT_UNAVAILABLE", message: "微信分享暂时不可用" },
+        });
+    }
   });
   app.get("/api/health", async () => ({ status: "ok", version: "1.0.0" }));
   app.post("/api/spaces", async (req, reply) => {
@@ -1193,6 +1243,12 @@ export async function buildApp(options: AppOptions = {}) {
         (path?.startsWith("/") && nameValid(path.slice(1))))
     )
       return reply.type("text/html").sendFile("index.html");
+    if (
+      (req.method === "GET" || req.method === "HEAD") &&
+      req.headers.accept?.includes("text/html") &&
+      existsSync(resolve(webRoot, "404.html"))
+    )
+      return reply.code(404).type("text/html").sendFile("404.html");
     return reply
       .code(404)
       .send({ error: { code: "NOT_FOUND", message: "页面不存在" } });

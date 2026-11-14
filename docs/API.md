@@ -30,3 +30,7 @@ PUT采用expectedRevision并原子比较更新，冲突409不得自动覆盖。�
 - `POST /unlock`新保护仅接收`{proof}`，旧门禁仍接收`{password}`，成功均204。任何经历过v3转换的public空间拒绝旧`/password`接口，409 `PROTECTION_REQUIRED`，防止取消后被旧客户端静默降级。
 - 原子转换保持createdAt/updatedAt/expiresAt及排序，增加space/page revision与keyRevision，不将密码变化当正文编辑续期。新路由上限3,300,000字节容纳6页，其他请求上限不变。
 - 新增422 `INVALID_PROTECTION`；任何验证/CAS/限速失败不允许部分转换。proof哈希和服务端盐不进入响应，KDF参数不接受降低次数或任意配置。
+
+## 微信网站分享（2026-10-30 本地准备）
+
+新增独立签名代理 `GET /api/wechat/jssdk?url=https%3A%2F%2F2space.cn%2Fwechat-share.html`。只接受该精确URL及单一url参数，其他输入400 INVALID_URL；共用WeReadingNotes签名服务，成功仅返回appId/timestamp/nonceStr/signature，上游失败502 WECHAT_UNAVAILABLE。不是空间API，不变更shared/数据契约或现有授权。详见WECHAT-SHARE.md；尚未部署。

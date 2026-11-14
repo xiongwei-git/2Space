@@ -11,6 +11,10 @@ data
 .env
 .env.*
 research
+release
+output
+docs
+PROJECT_MEMORY.md
 test-results
 playwright-report
 coverage

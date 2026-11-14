@@ -1,4 +1,5 @@
 @import "./tokens.css";
+@import "./language-select.css";
 :root {
   font-family: var(--font-family-body);
   line-height: var(--line-height-body);
@@ -1325,4 +1326,15 @@ button.tab-title {
   line-height: var(--line-height-body);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+@media (max-width: 600px) {
+  .actions .language-select {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+
+  :root:not([lang="zh-CN"]) .actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

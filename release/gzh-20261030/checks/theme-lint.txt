@@ -1,0 +1,8 @@
+📐 组件库源头检查：11 个库
+
+── theme-moyu-green ──
+   ⚠️  四周虚线框 border:…dashed（正文强调请用左竖条；仅居中的素材占位块可用 dashed）
+── theme-olive-journal ──
+   ⚠️  四周虚线框 border:…dashed（正文强调请用左竖条；仅居中的素材占位块可用 dashed）
+
+汇总：9/11 个库干净，ERROR×0，WARN×2

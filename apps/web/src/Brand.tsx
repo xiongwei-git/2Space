@@ -1,7 +1,5 @@
+import { t } from "./locale.js";
 export const BRAND_SLOGAN = "这边复制，那边就有。";
-export const BRAND_PROMISE = "粘贴过来，带着格式过去。";
-export const BRAND_DESCRIPTION =
-  "一段文字、一份代码，随手放下，换台设备接着用。";
 
 /** The original two spaces: 17×26, 4 apart, second 7 lower, rotated −8°. */
 export function BrandMark({ className = "" }: { className?: string }) {
@@ -50,7 +48,7 @@ export function Brand({
     <a
       className={`${className} brand`.trim()}
       href={href}
-      aria-label="2Space 首页"
+      aria-label={t("2Space 首页")}
     >
       <BrandMark />
       <span className="brand-wordmark">2Space</span>

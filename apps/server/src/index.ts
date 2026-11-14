@@ -1,5 +1,8 @@
 import { buildApp } from "./app.js";
-const app = await buildApp();
+const trustedProxies = process.env.TRUSTED_PROXIES?.split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
+const app = await buildApp({ trustedProxies });
 const port = Number(process.env.PORT ?? 3210);
 if (!Number.isInteger(port) || port < 1 || port > 65535)
   throw new Error("PORT must be a valid TCP port");

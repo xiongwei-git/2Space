@@ -1,3 +1,5 @@
+import { useLocale } from "./LanguageSelect.js";
+import { t } from "./locale.js";
 import { useEffect, useState } from "react";
 import {
   NodeViewContent,
@@ -130,6 +132,7 @@ function CodeBlockView({
   updateAttributes,
   extension,
 }: NodeViewProps) {
+  useLocale();
   const [editable, setEditable] = useState(editor.isEditable),
     [copied, setCopied] = useState(false);
   useEffect(() => {
@@ -154,7 +157,7 @@ function CodeBlockView({
     <NodeViewWrapper className="code-block-view" data-language={language}>
       <div className="code-block-header" contentEditable={false}>
         <select
-          aria-label="代码语言"
+          aria-label={t("代码语言")}
           value={language}
           disabled={!editable}
           onChange={(event) => {
@@ -165,7 +168,7 @@ function CodeBlockView({
           {CODE_LANGUAGES.map((value) => (
             <option key={value} value={value}>
               {value === "plaintext"
-                ? "纯文本"
+                ? t("纯文本")
                 : value === "xml"
                   ? "HTML / XML"
                   : value}
@@ -173,11 +176,11 @@ function CodeBlockView({
           ))}
         </select>
         <span className="code-block-hint">
-          {editable ? "Tab 缩进 · Esc 离开代码" : "仅查看"}
+          {editable ? t("Tab 缩进 · Esc 离开代码") : t("仅查看")}
         </span>
         <button
           type="button"
-          aria-label="复制代码"
+          aria-label={t("复制代码")}
           data-code-copy
           onClick={() => {
             void copyCodeText(node.textContent)
@@ -188,12 +191,13 @@ function CodeBlockView({
               .catch(() => notify("复制未成功，请选中代码手动复制。"));
           }}
         >
-          复制代码{copied && <span aria-hidden="true"> ✓</span>}
+          {t("复制代码")}
+          {copied && <span aria-hidden="true"> ✓</span>}
         </button>
         {editable && (
           <button
             type="button"
-            aria-label="退出代码块"
+            aria-label={t("退出代码块")}
             onClick={() => {
               if (!editor.isEditable) return;
               const pos = getPos();
@@ -206,7 +210,7 @@ function CodeBlockView({
                 .run();
             }}
           >
-            退出代码块
+            {t("退出代码块")}
           </button>
         )}
       </div>
@@ -224,7 +228,7 @@ function CodeBlockView({
           className="code-block-scroll"
           tabIndex={0}
           role="region"
-          aria-label="代码内容"
+          aria-label={t("代码内容")}
         >
           <NodeViewContent<"code"> as="code" style={{ whiteSpace: "pre" }} />
         </pre>

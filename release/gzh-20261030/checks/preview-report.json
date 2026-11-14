@@ -1,0 +1,38 @@
+[
+  {
+    "width": 1280,
+    "images": 4,
+    "paragraphIntegrity": true,
+    "noOverflow": true,
+    "axeViolations": 0,
+    "axeIncomplete": [
+      "color-contrast"
+    ],
+    "minParagraphFont": 14,
+    "richClipboard": true
+  },
+  {
+    "width": 390,
+    "images": 4,
+    "paragraphIntegrity": true,
+    "noOverflow": true,
+    "axeViolations": 0,
+    "axeIncomplete": [
+      "color-contrast"
+    ],
+    "minParagraphFont": 14,
+    "richClipboard": true
+  },
+  {
+    "width": 320,
+    "images": 4,
+    "paragraphIntegrity": true,
+    "noOverflow": true,
+    "axeViolations": 0,
+    "axeIncomplete": [
+      "color-contrast"
+    ],
+    "minParagraphFont": 14,
+    "richClipboard": true
+  }
+]

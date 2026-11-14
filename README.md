@@ -1,96 +1,54 @@
 # 2Space
 
-**这边复制，那边就有。** 一个轻量的跨设备在线剪贴板。
+简体中文 · [English](README.en.md) · [日本語](README.ja.md) · [Français](README.fr.md) · [Deutsch](README.de.md)
 
-1.0 聚焦文本、富文本和代码：保留常用粘贴格式与代码缩进，自动保存、跨端更新。新建空间输入名称直接进入，也可随机体验；默认永久，可设空间密码。顶部复制、下载和分享，右栏两组链接及二维码，最多6个可命名和排序的记事本。保留便捷的名称与分享流程，恢复原双格logo与“这边复制，那边就有。”。编辑器默认显示加粗、行内代码、代码块；逐块语言高亮、行号、原文复制与键盘缩进，表格粘贴转为行列文字。图片列入二期，任意文件不在范围内。具体实现和验收状态见 [验收记录](docs/ACCEPTANCE.md)。
+**这边复制，那边就有。** 2Space 是可自托管的跨设备在线剪贴板。用同一个空间名在不同设备打开，随手保存文字、富文本和代码。
 
-## 文字与代码
+![2Space 英文首页，左侧输入空间名，右侧展示两台设备上的同一份笔记](docs/images/home.webp)
 
-直接粘贴文字可保留常用富文本格式。点击“代码块”或输入三反引号后空格创建代码区域，再选择语言；Tab/Shift+Tab缩进与减少缩进，Esc离开代码编辑，Ctrl/Cmd+Enter或“退出代码块”接着写普通文字。逐块复制只复制原文，包含缩进和末尾换行。
+## 一键启动
 
-新表格和旧笔记中的表格显示为逐行文字，列间以 `|` 分隔；打开旧内容不自动保存或改写原密文，真实编辑后才保存新格式。详见[ADR-004](docs/decisions/004-brand-lightweight-code-editor.md)。
-
-## 本地 Docker 运行
-
-需要 Docker Engine / Docker Desktop 和 Docker Compose v2；本地无需另装 Node。
+在仓库根目录运行以下命令。需要正在运行的 Docker Engine 或 Docker Desktop，以及支持 `--wait` 的 Docker Compose v2 或更新版本。构建时需要访问 Docker Hub 和 npm registry，宿主机无需安装 Node.js。
 
 ```sh
-docker compose up --build -d
+docker compose up --build --detach --wait --wait-timeout 90
 ```
 
-打开 [本地 2Space](http://localhost:3210)。只监听本机回环地址，不暴露到局域网或公网。本轮不配置 `2space.cn` 的 DNS、证书或线上服务。
+命令成功后打开 [http://localhost:3210](http://localhost:3210)。默认只监听本机。若 3210 被占用，可在命令前加 `PORT=3211`，之后也用这个端口访问。
 
 ```sh
-docker compose ps
 docker compose logs --tail=60 app
-docker compose stop
+docker compose down
 ```
 
-数据库放在 `space-data` 命名卷，停止或重建容器会保留。不要使用 `down -v`：那会删除持久卷。详见 [运行与备份](docs/OPERATIONS.md)。
+SQLite 数据保存在 `space-data` 命名卷中，停止、重启和重建容器后仍可使用。更新前先备份数据，再在新版源码目录运行同一条启动命令。只有确定要删除数据时才使用 `docker compose down -v`。
 
-## Docker 开发
+要让手机或其他设备访问，请在 Docker 宿主机上配置 HTTPS 反向代理，使设备使用同一个 HTTPS 地址。查看[反向代理、备份与恢复](docs/SELF-HOSTING.md)。
 
-```sh
-docker compose stop
-docker compose -f compose.dev.yaml up --build
-```
+## 能做什么
 
-打开 [开发工作台](http://localhost:5173)。源码挂载进开发容器；启动时单次 `npm ci` 后同时运行 API watcher 与 Vite HMR。API 监听本地3210，前端通过代理同源访问；依赖与数据使用独立开发卷。开发与生产配置占用相同端口，按需只运行一套。
+- 一个空间最多放 6 份笔记，可命名和排序。自动保存，其他设备打开同一空间时可收到更新。
+- 保留常用粘贴格式。代码块支持语法高亮、行号、键盘缩进和原文复制。
+- 通过链接或二维码打开，支持复制和下载 TXT。可设置保留期限、空间密码或手动删除。
+- 界面提供简体中文、英文、日语、法语和德语。默认跟随浏览器语言，也可手动切换。
 
-## 验证
+## 分享与密码
 
-有 Node 24 时可直接运行：
+普通空间凭名称即可查看和编辑。分享地址的 `?readonly` 只切换查看界面。知道空间名称的人仍能进入可编辑页面。普通空间的正文虽以密文保存，服务端持有正文密钥。
+
+通过当前界面设置密码时，浏览器派生正文密钥并重新加密。服务端保存密文和验证所需的数据。密码忘记后无法找回。旧版空间链接仍按原权限工作，旧版密码门禁可通过重新设置密码升级。请妥善保存旧版可编辑及仅查看链接，它们携带相应权限。到期、删除和撤销都无法收回接收方已复制的内容。
+
+## 开发与维护
+
+应用由 React、Tiptap、Fastify 和 SQLite 组成。单个容器同时提供页面和 API，多设备同步使用 SSE。支持单实例部署。
 
 ```sh
 npm ci
 npm run typecheck
 npm test
 npm run build
-npm run test:links
-npm run test:parity
-node scripts/acceptance.mjs
 ```
 
-`acceptance.mjs` 需要本地生产工作台（含前端构建产物和 API）已启动，只使用它自己创建的合成空间，验证首页、JS/CSS资源、SPA深层入口，以及密文往返、权限、版本冲突、分享撤销并清理测试数据，不打印凭证。自动验收不替代真实浏览器中的粘贴、复制、二维码和跨设备检查。
+只用 Docker 开发时，先停止上面的服务，再运行 `docker compose -f compose.dev.yaml up --build`，打开 [http://localhost:5173](http://localhost:5173)。开发环境使用独立数据卷。
 
-仅通过 Docker 执行代码检查可在开发镜像就绪后运行：
-
-```sh
-docker compose -f compose.dev.yaml run --rm --no-deps app sh -c 'npm ci && npm run typecheck && npm test && npm run build'
-```
-
-请先停止开发容器，避免两个进程同时修改依赖卷。
-
-Web 视觉修改还需执行阅读基线检查：
-
-```sh
-npx playwright install chromium
-npm run test:visual
-```
-
-该命令包含静态字号与文案检查、构建及完整浏览器场景验收，使用临时数据库与随机本地端口，不连接现有笔记数据库。截图和脱敏报告写入被Git忽略的 `output/design-acceptance/`，需实际看图审查。字号角色、检查范围及原生缩放等未验收边界见 [开发规范](docs/DEVELOPMENT.md) 和 [验收记录](docs/ACCEPTANCE.md)。
-
-## 隐私与权限边界
-
-- 新public空间凭名称可查看和修改，密码可选；`/name?readonly`仅改变页面模式，知道名称的人仍可打开可编辑页面。public正文使用AES-GCM envelope，但密钥由服务端保存，不是端到端私密模式。
-- 旧private空间保持原有密文、凭证、期限和链接；正文密钥仅在浏览器，只有名称不能访问。旧private顶部分享默认发送真正的reader链接。
-- private可编辑与仅查看凭证分离，服务端校验权限。密钥位于链接 fragment，HTTP 请求不发送该片段；不要将完整链接放到工单、日志或公共聊天。
-- **旧private完整链接携带相应权限，丢失原链接或密钥无法找回。新public可设置整个空间访问密码，密码忘记没有找回渠道。** 请妥善保管浏览器中的空间入口。
-- 撤销分享会阻止后续访问，无法擦除接收方已复制、下载或截图的内容。
-- 临时保留到期后停止访问并清理活动数据库；备份需独立设置保留周期。不要把“活动数据已删除”理解为所有历史备份即时消失。
-- 不加载粘贴内容中的远程图片，拒绝脚本和危险 HTML；1.0 不支持图片或文件传输。
-- 浏览器、终端、供应链或服务器提供的前端脚本被攻破，仍可能泄露内容；这不是“绝对安全”承诺，也不是独立安全审计结论。
-- 本地 HTTP 仅用于回环调试。未来公开部署必须使用可信 HTTPS，并单独评估滥用防护、容量、备份与服务政策。
-
-## 并行开发规范
-
-模块职责与检查门禁见 [开发规范](docs/DEVELOPMENT.md)、[API契约](docs/API.md) 和 [任务进度](docs/TASKS.md)。前端、服务端、Docker交付按目录隔离；架构负责人统一维护共享契约、锁文件和集成。不在子任务内并发安装依赖或覆盖其他任务修改。
-
-## 架构与需求
-
-- [1.0需求基线](docs/REQUIREMENTS.md)
-- [开发架构](docs/ARCHITECTURE.md)
-- [安全规范](docs/SECURITY.md)
-- [架构决策](docs/decisions/001-local-encrypted-monolith.md)
-
-当前功能与API冻结基线见 [参考站对照](docs/JIANLA-PARITY.md) 和 [ADR-003](docs/decisions/003-public-names-reference-parity.md)。旧private命名与短分享设计保留在 [短链接设计](docs/SHORT-LINKS.md)，不能用其旧默认规则解释新public空间。
+本地开发需要 Node.js 24。Docker 开发、架构和兼容性测试见[开发规范](docs/DEVELOPMENT.md)、[架构](docs/ARCHITECTURE.md)、[API](docs/API.md)和[浏览器密码保护](docs/decisions/006-browser-password-protection.md)。

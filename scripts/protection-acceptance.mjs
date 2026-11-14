@@ -331,6 +331,7 @@ try {
   const beforePages = storedPages(initial.id);
   browser = await chromium.launch();
   const ownerContext = await browser.newContext({
+    locale: "zh-CN",
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
     permissions: ["clipboard-read", "clipboard-write"],
@@ -424,6 +425,7 @@ try {
 
   stage = "second-device-password";
   const readerContext = await browser.newContext({
+    locale: "zh-CN",
     viewport: { width: 390, height: 844 },
     reducedMotion: "reduce",
   });
@@ -468,6 +470,7 @@ try {
     "即时编辑后更换密码会先保存，原子转换保留最新正文",
   );
   const nextContext = await browser.newContext({
+    locale: "zh-CN",
     viewport: { width: 390, height: 844 },
     reducedMotion: "reduce",
   });
@@ -543,10 +546,12 @@ try {
     },
   });
   const draftContext = await browser.newContext({
+    locale: "zh-CN",
     viewport: { width: 390, height: 844 },
     reducedMotion: "reduce",
   });
   const changerContext = await browser.newContext({
+    locale: "zh-CN",
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });
@@ -690,6 +695,7 @@ try {
     },
   });
   const lateContext = await browser.newContext({
+    locale: "zh-CN",
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });
@@ -780,6 +786,7 @@ try {
     body: { password: oldPassword },
   });
   const legacyContext = await browser.newContext({
+    locale: "zh-CN",
     viewport: { width: 1280, height: 900 },
     reducedMotion: "reduce",
   });

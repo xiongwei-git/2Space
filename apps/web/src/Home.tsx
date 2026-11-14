@@ -1,3 +1,5 @@
+import LanguageSelect from "./LanguageSelect.js";
+import { t } from "./locale.js";
 import { useState } from "react";
 import "./home.css";
 import Icon from "./Icon.js";
@@ -89,6 +91,10 @@ const usageTopics = [
         "先别关闭。等待保存完成；如果网络中断或保存失败，先复制内容留作备份，再重试保存。",
       ],
       [
+        "两台设备同时修改，会覆盖彼此的内容吗？",
+        "如果另一台设备先保存了同一篇笔记，2Space 会暂停本次保存，提示你选择要保留的内容。看到提示时，先检查两边的修改。",
+      ],
+      [
         "到期时间从什么时候算？",
         "默认永久保留。选择保留时间后，每次保存内容都会重新计时，打开查看不会延长。到期会删除全部记事本，无法恢复；重要内容请另行备份。",
       ],
@@ -97,8 +103,8 @@ const usageTopics = [
 ];
 const privacyQuestions = [
   [
-    "有哪些基本保护？",
-    "内容以加密形式保存在服务器。设置新密码时，加密在浏览器中完成。请使用较长且不重复的密码；忘记新密码后无法找回内容。设置密码后，长时间不操作会锁定页面。",
+    "忘记密码了，还能找回内容吗？",
+    "如果使用新版密码保护，忘记密码后无法找回内容。请使用较长且不重复的密码，并妥善保存。设置密码后，长时间不操作会锁定页面。",
   ],
   [
     "链接或二维码被转发，有什么风险？",
@@ -149,38 +155,39 @@ export default function Home({
   return (
     <>
       <a className="skip-link" href="#main">
-        跳到主要内容
+        {t("跳到主要内容")}
       </a>
       <header className="site-header">
         <div className="home-container header-inner">
           <Brand />
-          <nav className="nav" aria-label="主导航">
+          <nav className="nav" aria-label={t("主导航")}>
             <a className="nav-link" href="#features">
-              核心功能
+              {t("核心功能")}
             </a>
             <a className="nav-link" href="#cases">
-              使用场景
+              {t("使用场景")}
             </a>
             <a className="nav-link" href="#faq">
-              常见问题
+              {t("常见问题")}
             </a>
             <a className="nav-link support-link" href="#support">
-              ♥ 支持我们
+              {t("♥ 支持我们")}
             </a>
             <button
               className="btn ghost home-bookmark"
               onClick={onBookmark}
-              aria-label="收藏首页"
+              aria-label={t("收藏首页")}
             >
               <Icon name="bookmark" />
-              <span className="bookmark-label">收藏</span>
+              <span className="bookmark-label">{t("收藏")}</span>
             </button>
             <button
               className="btn primary"
               onClick={() => onEnter(randomExperienceName())}
             >
-              立即体验
+              {t("立即体验")}
             </button>
+            <LanguageSelect />
           </nav>
         </div>
       </header>
@@ -188,9 +195,9 @@ export default function Home({
         <section className="hero">
           <div className="home-container hero-layout">
             <div className="hero-copy">
-              <h1 data-brand-slogan>{BRAND_SLOGAN}</h1>
+              <h1 data-brand-slogan>{t(BRAND_SLOGAN)}</h1>
               <p className="hero-sub">
-                文字、代码、网页片段。放进同一个链接，换台设备接着用。
+                {t("文字、代码、网页片段。放进同一个链接，换台设备接着用。")}
               </p>
               <form
                 className="form-card"
@@ -201,8 +208,8 @@ export default function Home({
               >
                 <label htmlFor={lockedName ? "spaceAccessCode" : "spaceName"}>
                   {lockedName
-                    ? `打开 ${lockedName}，请输入访问码`
-                    : "创建或打开你的剪贴板"}
+                    ? t("打开 {0}，请输入访问码", lockedName)
+                    : t("创建或打开你的剪贴板")}
                 </label>
                 {lockedName ? (
                   <input
@@ -210,7 +217,7 @@ export default function Home({
                     id="spaceAccessCode"
                     value={accessCode}
                     onChange={(e) => onCode(e.target.value)}
-                    placeholder="粘贴访问码或完整链接"
+                    placeholder={t("粘贴访问码或完整链接")}
                     autoComplete="off"
                   />
                 ) : (
@@ -221,7 +228,7 @@ export default function Home({
                       value={name}
                       onChange={(e) => onName(e.target.value)}
                       maxLength={64}
-                      placeholder="例如：team-notes"
+                      placeholder={t("例如：team-notes")}
                       autoComplete="off"
                       spellCheck={false}
                     />
@@ -230,24 +237,24 @@ export default function Home({
                 <div className="form-actions">
                   <button className="btn primary" disabled={busy}>
                     {busy
-                      ? "正在打开…"
+                      ? t("正在打开…")
                       : lockedName
-                        ? "打开已有空间"
-                        : "进入剪贴板"}
+                        ? t("打开已有空间")
+                        : t("进入剪贴板")}
                   </button>
                 </div>
                 <p className="form-hint">
                   {lockedName ? (
-                    "请使用分享者提供的完整链接或访问码。"
+                    t("请使用分享者提供的完整链接或访问码。")
                   ) : (
                     <>
-                      不想起名？
+                      {t("不想起名？")}
                       <button
                         type="button"
                         className="inline-button"
                         onClick={() => onEnter(randomExperienceName())}
                       >
-                        随机体验一个
+                        {t("随机体验一个")}
                       </button>
                     </>
                   )}
@@ -255,16 +262,18 @@ export default function Home({
               </form>
               <p className="public-rule">
                 <Icon name="lock" />
-                知道名称的人可以查看和修改，设置密码可限制访问。
+                {t("知道名称的人可以查看和修改，设置密码可限制访问。")}
               </p>
               <p className="encryption-note">
-                {location.protocol === "https:" && <span>HTTPS 加密传输</span>}
-                <span>内容加密存储</span>
+                {location.protocol === "https:" && (
+                  <span>{t("HTTPS 加密传输")}</span>
+                )}
+                <span>{t("内容加密存储")}</span>
               </p>
             </div>
             <figure
               className="transfer-demo"
-              aria-label="同一份内容在电脑和手机上打开的示意"
+              aria-label={t("同一份内容在电脑和手机上打开的示意")}
             >
               <div className="demo-desktop">
                 <div className="demo-window-bar">
@@ -272,35 +281,35 @@ export default function Home({
                   <span>2space.cn/travel-notes</span>
                 </div>
                 <div className="demo-document">
-                  <span className="demo-device-label">在电脑上放下</span>
-                  <h2>周五下班后</h2>
-                  <p>周五 18:30，南站见。</p>
+                  <span className="demo-device-label">{t("在电脑上放下")}</span>
+                  <h2>{t("周五下班后")}</h2>
+                  <p>{t("周五 18:30，南站见。")}</p>
                   <ul>
-                    <li>去吃小厨娘</li>
-                    <li>然后百家湖逛逛</li>
+                    <li>{t("去吃小厨娘")}</li>
+                    <li>{t("然后百家湖逛逛")}</li>
                   </ul>
                   <div className="demo-saved">
                     <span aria-hidden="true">✓</span>
-                    已保存
+                    {t("已保存")}
                   </div>
                 </div>
               </div>
               <div className="demo-phone">
                 <div className="demo-phone-top">
                   <Icon name="phone" />
-                  <span>在手机上接着看</span>
+                  <span>{t("在手机上接着看")}</span>
                 </div>
                 <div className="demo-document">
-                  <h2>周五下班后</h2>
-                  <p>周五 18:30，南站见。</p>
+                  <h2>{t("周五下班后")}</h2>
+                  <p>{t("周五 18:30，南站见。")}</p>
                   <ul>
-                    <li>去吃小厨娘</li>
-                    <li>然后百家湖逛逛</li>
+                    <li>{t("去吃小厨娘")}</li>
+                    <li>{t("然后百家湖逛逛")}</li>
                   </ul>
                 </div>
               </div>
               <figcaption className="demo-caption">
-                同一个链接，同一份内容。
+                {t("同一个链接，同一份内容。")}
               </figcaption>
             </figure>
           </div>
@@ -308,19 +317,21 @@ export default function Home({
         <section className="home-section" id="how">
           <div className="home-container how-layout">
             <div className="section-head">
-              <h2>从这里放下，到那里取用。</h2>
-              <p>不必给自己发消息，也不用新建一份长文档。</p>
+              <h2>{t("从这里放下，到那里取用。")}</h2>
+              <p>{t("不必给自己发消息，也不用新建一份长文档。")}</p>
             </div>
             <div className="steps">
               {[
                 [
-                  "取一个名字",
-                  "输入字母、数字、下划线或中划线。记住名称，也就记住了链接。",
+                  t("取一个名字"),
+                  t(
+                    "输入字母、数字、下划线或中划线。记住名称，也就记住了链接。",
+                  ),
                 ],
-                ["粘贴进去", "放下文字或代码，等页面显示“已保存”。"],
+                [t("粘贴进去"), t("放下文字或代码，等页面显示“已保存”。")],
                 [
-                  "换台设备打开",
-                  "输入相同地址，或扫描二维码，继续查看、复制和编辑。",
+                  t("换台设备打开"),
+                  t("输入相同地址，或扫描二维码，继续查看、复制和编辑。"),
                 ],
               ].map(([title, body], index) => (
                 <article className="step" key={title}>
@@ -328,8 +339,8 @@ export default function Home({
                     {index + 1}
                   </span>
                   <div>
-                    <h3>{title}</h3>
-                    <p>{body}</p>
+                    <h3>{t(title)}</h3>
+                    <p>{t(body)}</p>
                   </div>
                 </article>
               ))}
@@ -339,8 +350,8 @@ export default function Home({
         <section className="home-section" id="features">
           <div className="home-container feature-layout">
             <div className="section-head">
-              <h2>把传内容这件事，做得简单一点。</h2>
-              <p>常用的功能都在手边，打开就知道怎么用。</p>
+              <h2>{t("把传内容这件事，做得简单一点。")}</h2>
+              <p>{t("常用的功能都在手边，打开就知道怎么用。")}</p>
             </div>
             <div className="features">
               {features.map(([icon, title, body]) => (
@@ -349,8 +360,8 @@ export default function Home({
                     <Icon name={icon} />
                   </span>
                   <div>
-                    <h3>{title}</h3>
-                    <p>{body}</p>
+                    <h3>{t(title)}</h3>
+                    <p>{t(body)}</p>
                   </div>
                 </article>
               ))}
@@ -358,9 +369,11 @@ export default function Home({
             <div className="privacy-callout">
               <Icon name="lock" />
               <div>
-                <h3>访问范围，说清楚。</h3>
+                <h3>{t("访问范围，说清楚。")}</h3>
                 <p>
-                  名称就是入口，知道名称的人可以查看和修改。需要限制访问时，先设置密码。仅查看链接方便阅读，不代表内容只有对方能看。
+                  {t(
+                    "名称就是入口，知道名称的人可以查看和修改。需要限制访问时，先设置密码。仅查看链接方便阅读，不代表内容只有对方能看。",
+                  )}
                 </p>
               </div>
             </div>
@@ -369,45 +382,45 @@ export default function Home({
         <section className="home-section" id="compare">
           <div className="home-container format-layout">
             <div className="section-head">
-              <h2>一段文字，一份代码，都有合适的样子。</h2>
+              <h2>{t("一段文字，一份代码，都有合适的样子。")}</h2>
               <p>
-                复制来的常用格式可以保留。代码有自己的位置，缩进、换行也一起带过去。
+                {t(
+                  "复制来的常用格式可以保留。代码有自己的位置，缩进、换行也一起带过去。",
+                )}
               </p>
             </div>
             <article className="format-sample format-prose">
               <div className="format-label">
                 <Icon name="clipboard" />
-                文字与常用格式
+                {t("文字与常用格式")}
               </div>
-              <h3>把要点留清楚</h3>
-              <p>
-                标题、<strong>重点</strong>、列表和链接，粘贴后继续整理。
-              </p>
+              <h3>{t("把要点留清楚")}</h3>
+              <p>{t("标题、重点、列表和链接，粘贴后继续整理。")}</p>
               <ul>
-                <li>今天要处理的两件事</li>
-                <li>一段值得留下的网页摘录</li>
+                <li>{t("今天要处理的两件事")}</li>
+                <li>{t("一段值得留下的网页摘录")}</li>
               </ul>
             </article>
             <article className="format-sample format-code">
               <div className="format-label">
                 <Icon name="code" />
-                代码与配置
+                {t("代码与配置")}
               </div>
-              <pre tabIndex={0} aria-label="代码格式示例">
+              <pre tabIndex={0} aria-label={t("代码格式示例")}>
                 <code>
                   {
                     'const space = "2space";\n\nfunction keepGoing(text) {\n  return text.trim();\n}'
                   }
                 </code>
               </pre>
-              <p>保留缩进，按语言高亮，也能直接复制原文。</p>
+              <p>{t("保留缩进，按语言高亮，也能直接复制原文。")}</p>
             </article>
           </div>
         </section>
         <section className="home-section" id="cases">
           <div className="home-container cases-layout">
             <div className="section-head">
-              <h2>手边的内容，随时有地方放。</h2>
+              <h2>{t("手边的内容，随时有地方放。")}</h2>
             </div>
             <div className="cases">
               {cases.map(([icon, title, body]) => (
@@ -416,8 +429,8 @@ export default function Home({
                     <Icon name={icon} />
                   </span>
                   <div>
-                    <h3>{title}</h3>
-                    <p>{body}</p>
+                    <h3>{t(title)}</h3>
+                    <p>{t(body)}</p>
                   </div>
                 </article>
               ))}
@@ -427,21 +440,21 @@ export default function Home({
         <section className="home-section" id="faq">
           <div className="home-container usage-guide">
             <div className="section-head">
-              <h2>几件容易弄混的事。</h2>
-              <p>换设备、发链接、关页面之前，先看清楚这些规则。</p>
+              <h2>{t("几件容易弄混的事。")}</h2>
+              <p>{t("换设备、发链接、关页面之前，先看清楚这些规则。")}</p>
             </div>
             <div className="usage-guide-grid">
               {usageTopics.map(({ icon, title, items }) => (
                 <article className="usage-topic" key={title}>
                   <h3>
                     <Icon name={icon} />
-                    {title}
+                    {t(title)}
                   </h3>
                   <dl>
                     {items.map(([question, answer]) => (
                       <div key={question}>
-                        <dt>{question}</dt>
-                        <dd>{answer}</dd>
+                        <dt>{t(question)}</dt>
+                        <dd>{t(answer)}</dd>
                       </div>
                     ))}
                   </dl>
@@ -454,14 +467,87 @@ export default function Home({
               id="privacy-faq"
             >
               <div className="section-head">
-                <h3 id="privacy-guide-title">隐私与安全</h3>
-                <p>先了解保护的范围，再决定放什么、分享给谁。</p>
+                <h3 id="privacy-guide-title">{t("隐私与安全")}</h3>
+                <p>{t("先了解保护的范围，再决定放什么、分享给谁。")}</p>
+              </div>
+              <div className="protection-explainer">
+                <figure className="protection-flow">
+                  <figcaption>{t("一张便签的加密之旅")}</figcaption>
+                  <p>{t("以使用新版密码保护的剪贴板为例。")}</p>
+                  <ol role="list">
+                    <li>
+                      <img
+                        src="/illustrations/encryption-computer.webp"
+                        alt=""
+                        loading="lazy"
+                      />
+                      <strong>{t("电脑先加密")}</strong>
+                      <p>{t("浏览器把「18:30」加密成一串符号，再发送。")}</p>
+                      <Icon name="arrow" className="protection-arrow" />
+                    </li>
+                    <li>
+                      <img
+                        src="/illustrations/encryption-server.webp"
+                        alt=""
+                        loading="lazy"
+                      />
+                      <strong>{t("服务器保存加密内容")}</strong>
+                      <p>
+                        {t(
+                          "服务器存下加密后的符号，解密所需的钥匙留在浏览器。",
+                        )}
+                      </p>
+                      <Icon name="arrow" className="protection-arrow" />
+                    </li>
+                    <li>
+                      <img
+                        src="/illustrations/encryption-phone.webp"
+                        alt=""
+                        loading="lazy"
+                      />
+                      <strong>{t("手机输入密码后解密")}</strong>
+                      <p>{t("手机浏览器用密码解密，你又能看到「18:30」。")}</p>
+                    </li>
+                  </ol>
+                </figure>
+                <div className="protection-modes">
+                  <div>
+                    <h4>{t("未设置密码")}</h4>
+                    <p>
+                      {t("内容加密存储。知道剪贴板名称的人可以查看和修改。")}
+                    </p>
+                  </div>
+                  <div>
+                    <h4>{t("使用新版密码保护")}</h4>
+                    <p>
+                      {t(
+                        "密码和解密所需的钥匙都留在浏览器里。换设备时，需要输入密码才能打开。",
+                      )}
+                    </p>
+                  </div>
+                </div>
+                <details className="protection-details">
+                  <summary>{t("查看加密技术细节")}</summary>
+                  {location.protocol === "https:" && (
+                    <p>{t("HTTPS 保护浏览器与服务器之间的传输。")}</p>
+                  )}
+                  <p>
+                    {t(
+                      "使用新版密码保护时，浏览器通过 PBKDF2-SHA256 和 HKDF-SHA256\n                    从密码生成两份独立的数据。一份用于 AES-256-GCM\n                    加解密内容，另一份用于向服务器验证访问。",
+                    )}
+                  </p>
+                  <p>
+                    {t(
+                      "未设密码的剪贴板由服务器保存解密所需的钥匙。旧版密码保护仍按原有方式运行，重新设置密码后才启用新版保护。",
+                    )}
+                  </p>
+                </details>
               </div>
               <dl className="privacy-questions">
                 {privacyQuestions.map(([question, answer]) => (
                   <div className="privacy-question" key={question}>
-                    <dt>{question}</dt>
-                    <dd>{answer}</dd>
+                    <dt>{t(question)}</dt>
+                    <dd>{t(answer)}</dd>
                   </div>
                 ))}
               </dl>
@@ -472,11 +558,11 @@ export default function Home({
           <div className="home-container support-layout">
             <div className="support-card">
               <div>
-                <h2>顺手的话，也分享给朋友。</h2>
-                <p>把2Space的首页发给需要在设备间传文字的人。</p>
+                <h2>{t("顺手的话，也分享给朋友。")}</h2>
+                <p>{t("把2Space的首页发给需要在设备间传文字的人。")}</p>
               </div>
               <button className="btn primary" onClick={onSupport}>
-                ♥ 支持2Space
+                {t("♥ 支持2Space")}
               </button>
             </div>
           </div>
@@ -486,47 +572,50 @@ export default function Home({
         <div className="home-container footer-grid">
           <div>
             <Brand />
-            <p>这边复制，那边就有。</p>
-            <span className="version">v1.0</span>
+            <p>{t("这边复制，那边就有。")}</p>
           </div>
-          <nav aria-label="产品导航">
-            <h2>开始使用</h2>
-            <a href="#features">核心功能</a>
-            <a href="#cases">使用场景</a>
-            <a href="#compare">文字与代码</a>
-            <a href="#faq">常见问题</a>
+          <nav aria-label={t("产品导航")}>
+            <h2>{t("开始使用")}</h2>
+            <a href="#features">{t("核心功能")}</a>
+            <a href="#cases">{t("使用场景")}</a>
+            <a href="#compare">{t("文字与代码")}</a>
+            <a href="#faq">{t("常见问题")}</a>
             <button
               className="inline-button"
               onClick={() => onEnter(randomExperienceName())}
             >
-              立即体验
+              {t("立即体验")}
             </button>
           </nav>
           <div>
-            <h2>关于2Space</h2>
+            <h2>{t("关于2Space")}</h2>
             <button className="inline-button" onClick={onSupport}>
-              支持2Space
+              {t("支持2Space")}
             </button>
             <details
               open={privacyOpen}
               onToggle={(event) => setPrivacyOpen(event.currentTarget.open)}
             >
-              <summary>隐私政策</summary>
+              <summary>{t("隐私政策")}</summary>
               <p>
-                知道名称的人可以查看和修改；设置密码可限制访问。内容以加密形式保存在服务器，请勿存放高度敏感信息。原有独立链接保留原来的访问限制。删除不能收回别人已复制的内容。
+                {t(
+                  "知道名称的人可以查看和修改；设置密码可限制访问。内容以加密形式保存在服务器，请勿存放高度敏感信息。原有独立链接保留原来的访问限制。删除不能收回别人已复制的内容。",
+                )}
               </p>
             </details>
             <details>
-              <summary>使用条款</summary>
+              <summary>{t("使用条款")}</summary>
               <p>
-                请勿存储或传播违法、侵权或有害内容。重要内容请自行备份；请合理使用，不要恶意刷量。
+                {t(
+                  "请勿存储或传播违法、侵权或有害内容。重要内容请自行备份；请合理使用，不要恶意刷量。",
+                )}
               </p>
             </details>
           </div>
         </div>
         <div className="home-container footer-bottom">
           <span>© {new Date().getFullYear()} 2Space</span>
-          <span>重要内容，请另行备份。</span>
+          <span>{t("重要内容，请另行备份。")}</span>
         </div>
       </footer>
     </>

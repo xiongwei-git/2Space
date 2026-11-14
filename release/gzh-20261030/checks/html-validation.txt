@@ -1,0 +1,4 @@
+📋 公众号 HTML 合规校验: release/gzh-20261030/article_排版_石墨极简风(graphite-minimal).html
+   span leaf 包裹: 82 处
+
+✅ 完全合规，可直接粘贴到公众号编辑器
