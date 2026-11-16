@@ -1,3 +1,5 @@
+import { useLocale } from "./LanguageSelect.js";
+import { t } from "./locale.js";
 import { useEffect } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { sanitizeHtml } from "./sanitize.js";
@@ -21,13 +23,14 @@ export default function Editor({
   onChange,
   onNotice,
 }: EditorProps) {
+  const locale = useLocale();
   const editor = useEditor({
     extensions: createEditorExtensions(onNotice),
     content: sanitizeHtml(html),
     editable: !readOnly,
     editorProps: {
       attributes: {
-        "aria-label": readOnly ? "查看内容" : "编辑内容",
+        "aria-label": readOnly ? t("查看内容") : t("编辑内容"),
         role: "textbox",
         "aria-multiline": "true",
       },
@@ -84,7 +87,14 @@ export default function Editor({
   useEffect(() => {
     if (editor) setEditorReadOnly(editor, readOnly);
   }, [editor, readOnly]);
-  if (!editor) return <div className="editor-loading">正在打开笔记…</div>;
+  useEffect(() => {
+    editor?.view.dom.setAttribute(
+      "aria-label",
+      t(readOnly ? "查看内容" : "编辑内容"),
+    );
+  }, [editor, locale, readOnly]);
+  if (!editor)
+    return <div className="editor-loading">{t("正在打开笔记…")}</div>;
   // An empty code block (or heading/list) is intentional structure, not the
   // untouched text canvas. Never paint the text hint over its NodeView controls.
   const showTextHint =
@@ -115,15 +125,15 @@ export default function Editor({
         <div
           className="editor-tools compact-tools"
           role="toolbar"
-          aria-label="文字与代码"
+          aria-label={t("文字与代码")}
         >
-          {tool("加粗", "加粗", editor.isActive("bold"), () =>
+          {tool(t("加粗"), t("加粗"), editor.isActive("bold"), () =>
             editor.chain().focus().toggleBold().run(),
           )}
-          {tool("行内代码", "行内代码", editor.isActive("code"), () =>
+          {tool(t("行内代码"), t("行内代码"), editor.isActive("code"), () =>
             editor.chain().focus().toggleCode().run(),
           )}
-          {tool("代码块", "代码块", editor.isActive("codeBlock"), () =>
+          {tool(t("代码块"), t("代码块"), editor.isActive("codeBlock"), () =>
             editor
               .chain()
               .focus()
@@ -131,38 +141,46 @@ export default function Editor({
               .run(),
           )}
           <details className="editor-more-format">
-            <summary>更多格式</summary>
+            <summary>{t("更多格式")}</summary>
             <div className="editor-tools">
-              {tool("斜体", "斜体", editor.isActive("italic"), () =>
+              {tool(t("斜体"), t("斜体"), editor.isActive("italic"), () =>
                 editor.chain().focus().toggleItalic().run(),
               )}
-              {tool("列表", "无序列表", editor.isActive("bulletList"), () =>
-                editor.chain().focus().toggleBulletList().run(),
+              {tool(
+                t("列表"),
+                t("无序列表"),
+                editor.isActive("bulletList"),
+                () => editor.chain().focus().toggleBulletList().run(),
               )}
-              {tool("引用", "引用", editor.isActive("blockquote"), () =>
+              {tool(t("引用"), t("引用"), editor.isActive("blockquote"), () =>
                 editor.chain().focus().toggleBlockquote().run(),
               )}
-              {tool("链接", "插入或修改链接", editor.isActive("link"), () => {
-                const url = window.prompt(
-                  "粘贴完整网址",
-                  editor.getAttributes("link").href || "https://",
-                );
-                if (url === null) return;
-                if (!url.trim()) {
-                  editor.chain().focus().unsetLink().run();
-                  return;
-                }
-                if (!/^(https?:\/\/|mailto:)/i.test(url)) {
-                  onNotice("请输入完整网址，例如 https://example.com。");
-                  return;
-                }
-                editor
-                  .chain()
-                  .focus()
-                  .extendMarkRange("link")
-                  .setLink({ href: url })
-                  .run();
-              })}
+              {tool(
+                t("链接"),
+                t("插入或修改链接"),
+                editor.isActive("link"),
+                () => {
+                  const url = window.prompt(
+                    t("粘贴完整网址"),
+                    editor.getAttributes("link").href || "https://",
+                  );
+                  if (url === null) return;
+                  if (!url.trim()) {
+                    editor.chain().focus().unsetLink().run();
+                    return;
+                  }
+                  if (!/^(https?:\/\/|mailto:)/i.test(url)) {
+                    onNotice("请输入完整网址，例如 https://example.com。");
+                    return;
+                  }
+                  editor
+                    .chain()
+                    .focus()
+                    .extendMarkRange("link")
+                    .setLink({ href: url })
+                    .run();
+                },
+              )}
             </div>
           </details>
         </div>
@@ -171,7 +189,7 @@ export default function Editor({
         <EditorContent editor={editor} />
         {showTextHint && (
           <div className="editor-placeholder" aria-hidden="true">
-            在这里粘贴文字，或开始输入。代码可以放进「代码块」。
+            {t("在这里粘贴文字，或开始输入。代码可以放进「代码块」。")}
           </div>
         )}
       </div>

@@ -6,8 +6,6 @@ English · [简体中文](README.md)
 
 ![2Space English home screen preview showing the same note on two devices](docs/images/home.webp)
 
-_Screenshot from the multilingual development build. The current open-source app interface is in Simplified Chinese._
-
 ## Start with one command
 
 Run this from the repository root. You'll need a running Docker Engine or Docker Desktop and Docker Compose v2 or newer with support for `--wait`. The build needs access to Docker Hub and the npm registry. You can run it without installing Node.js on the host.
@@ -32,7 +30,7 @@ For phones and other devices, configure an HTTPS reverse proxy on the Docker hos
 - Keep up to six named, reorderable notes in a space. Changes save automatically and sync to other devices with the same space open.
 - Preserve common formatting when pasting rich text. Code blocks support syntax highlighting, line numbers, keyboard indentation, and copying the original text.
 - Open spaces through links or QR codes, copy content, and download plain text. Set an expiration or a space password, or delete the space manually.
-- The app interface is in Simplified Chinese. It handles text, basic rich text, and code.
+- The interface supports Simplified Chinese, English, Japanese, French, and German. It follows your browser language by default, and you can switch languages in the app.
 
 ## Sharing and passwords
 

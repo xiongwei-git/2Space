@@ -1,3 +1,5 @@
+import LanguageSelect from "./LanguageSelect.js";
+import { t } from "./locale.js";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import Icon from "./Icon.js";
 import { BrandMark, BRAND_SLOGAN } from "./Brand.js";
@@ -20,6 +22,7 @@ interface Props {
   busy: boolean;
   fatal: string;
   status: string;
+  saveError: string | null;
   online: boolean;
   conflicts: Set<string>;
   editLink: string;
@@ -75,9 +78,9 @@ function ShareQr({
       <div className="qr-label">{label}</div>
       <div className="qr">
         {qr ? (
-          <img src={qr} alt={`${label}二维码`} />
+          <img src={qr} alt={t("{0}二维码", label)} />
         ) : (
-          <span>{link ? "正在生成二维码…" : "尚未开启分享"}</span>
+          <span>{link ? t("正在生成二维码…") : t("尚未开启分享")}</span>
         )}
       </div>
       <div className="link">
@@ -96,7 +99,7 @@ function ShareQr({
               .catch(() => onNotice("复制未成功，请手动选择链接复制。"))
           }
         >
-          复制
+          {t("复制")}
         </button>
       </div>
     </div>
@@ -139,10 +142,11 @@ export default function Workspace(p: Props) {
     setRenaming(null);
   }
   const seconds = p.space?.retentionSeconds ?? 0,
-    retention =
+    retention = t(
       RETENTION_LABELS[
         RETENTION_SECONDS.indexOf(seconds as (typeof RETENTION_SECONDS)[number])
-      ] || "永久保留";
+      ] || "永久保留",
+    );
   const remaining = p.space?.expiresAt
     ? Math.max(
         0,
@@ -151,57 +155,68 @@ export default function Workspace(p: Props) {
     : null;
   const remainingText =
     remaining === null
-      ? "永久"
+      ? t("永久")
       : remaining >= 86400
-        ? `${Math.floor(remaining / 86400)}天 ${Math.floor((remaining % 86400) / 3600)}小时`
+        ? t(
+            "{0}天 {1}小时",
+            Math.floor(remaining / 86400),
+            Math.floor((remaining % 86400) / 3600),
+          )
         : remaining >= 3600
-          ? `${Math.floor(remaining / 3600)}小时 ${Math.floor((remaining % 3600) / 60)}分钟`
-          : `${Math.floor(remaining / 60)}分 ${remaining % 60}秒`;
+          ? t(
+              "{0}小时 {1}分钟",
+              Math.floor(remaining / 3600),
+              Math.floor((remaining % 3600) / 60),
+            )
+          : t("{0}分 {1}秒", Math.floor(remaining / 60), remaining % 60);
   return (
     <main className="board-container">
       <header className="board-header">
         <div className="board-brand">
-          <a className="board-logo" href="/" aria-label="2Space首页">
+          <a className="board-logo" href="/" aria-label={t("2Space首页")}>
             <BrandMark />
           </a>
           <div className="board-identity">
             <span className="board-brand-label">2Space</span>
-            <strong className="board-name">/{p.space?.name || "剪贴板"}</strong>
+            <strong className="board-name">
+              /{p.space?.name || t("剪贴板")}
+            </strong>
           </div>
           <a className="home-link" href="/">
-            ← 返回首页
+            {t("← 返回首页")}
           </a>
         </div>
         <div className="actions">
+          <LanguageSelect />
           <button
             className="btn ghost"
             onClick={p.onBookmark}
-            aria-label="收藏当前剪贴板"
+            aria-label={t("收藏当前剪贴板")}
           >
-            <Icon name="bookmark" /> 收藏
+            <Icon name="bookmark" /> {t("收藏")}
           </button>
           <button className="btn ghost" onClick={() => p.onCopy(true)}>
-            <Icon name="copy" /> 复制内容
+            <Icon name="copy" /> {t("复制内容")}
           </button>
           <button className="btn ghost" onClick={p.onDownload}>
-            <Icon name="download" /> 下载文字
+            <Icon name="download" /> {t("下载文字")}
           </button>
           <button className="btn primary" onClick={p.onShare}>
-            <Icon name="share" /> 分享
+            <Icon name="share" /> {t("分享")}
           </button>
         </div>
       </header>
       <section className="board-main">
         <div className="main-head">
           <h1>
-            文字与代码{" "}
+            {t("文字与代码")}{" "}
             <span className={p.reader ? "badge readonly" : "badge"}>
-              {p.reader ? "仅查看" : "可编辑"}
+              {p.reader ? t("仅查看") : t("可编辑")}
             </span>
           </h1>
           {!p.reader && (
             <details className="format-shortcuts">
-              <summary>更多操作</summary>
+              <summary>{t("更多操作")}</summary>
               <div
                 onClick={(event) => {
                   if ((event.target as HTMLElement).closest("button"))
@@ -210,11 +225,13 @@ export default function Workspace(p: Props) {
                       ?.removeAttribute("open");
                 }}
               >
-                <button onClick={() => p.onCopy(false)}>复制纯文字</button>
-                <button onClick={p.onSave}>立即保存</button>
-                <button onClick={p.onPrivacy}>查看隐私说明</button>
+                <button onClick={() => p.onCopy(false)}>
+                  {t("复制纯文字")}
+                </button>
+                <button onClick={p.onSave}>{t("立即保存")}</button>
+                <button onClick={p.onPrivacy}>{t("查看隐私说明")}</button>
                 <button className="danger" onClick={p.onRemoveSpace}>
-                  删除整个剪贴板
+                  {t("删除整个剪贴板")}
                 </button>
               </div>
             </details>
@@ -224,7 +241,7 @@ export default function Workspace(p: Props) {
           <div
             className="tabs-owner"
             role="tablist"
-            aria-label="记事本列表"
+            aria-label={t("记事本列表")}
             aria-owns={p.pages
               .map((page) => `note-tab-${page.record.id}`)
               .join(" ")}
@@ -276,7 +293,7 @@ export default function Workspace(p: Props) {
                   <input
                     autoFocus
                     className="tab-rename-input"
-                    aria-label="记事本名称"
+                    aria-label={t("记事本名称")}
                     maxLength={60}
                     value={renaming.value}
                     onFocus={(event) => event.currentTarget.select()}
@@ -297,8 +314,8 @@ export default function Workspace(p: Props) {
                 {index > 0 && !p.reader && !renaming && (
                   <button
                     className="tab-close"
-                    aria-label={`删除${pageLabel(page, index)}`}
-                    title="删除记事本"
+                    aria-label={t("删除{0}", pageLabel(page, index))}
+                    title={t("删除记事本")}
                     onClick={(e) => {
                       e.stopPropagation();
                       p.onDelete(page.record.id);
@@ -308,7 +325,7 @@ export default function Workspace(p: Props) {
                   </button>
                 )}
                 {p.conflicts.has(page.record.id) && (
-                  <span role="img" aria-label="存在未保存冲突">
+                  <span role="img" aria-label={t("存在未保存冲突")}>
                     !
                   </span>
                 )}
@@ -317,7 +334,7 @@ export default function Workspace(p: Props) {
           </div>
           {!p.reader && p.pages.length < MAX_PAGES && (
             <button className="tab-add" disabled={p.busy} onClick={p.onAdd}>
-              ＋ 新建
+              {t("＋ 新建")}
             </button>
           )}
         </div>
@@ -325,54 +342,62 @@ export default function Workspace(p: Props) {
           <p className="board-access-note">
             <Icon name="lock" />
             <span>
-              {p.reader ? "当前页面仅供查看。" : ""}
+              {p.reader ? t("当前页面仅供查看。") : ""}
               {p.space?.passwordProtected
-                ? "已设置密码，打开内容时需要输入。"
-                : "知道名称的人可以查看和修改，设置密码可限制访问。"}
+                ? t("已设置密码，打开内容时需要输入。")
+                : t("知道名称的人可以查看和修改，设置密码可限制访问。")}
             </span>
           </p>
         )}
         {!!p.recoverableDraftCount && (
           <div className="conflict-banner">
-            <strong>这台设备有未恢复的修改</strong>
+            <strong>{t("这台设备有未恢复的修改")}</strong>
             <p>
-              使用上次的密码恢复后，可另存为新记事本；原记录会保留到恢复成功。
+              {t(
+                "使用上次的密码恢复后，可另存为新记事本；原记录会保留到恢复成功。",
+              )}
             </p>
             <button className="btn ghost" onClick={p.onRecoverDrafts}>
-              恢复未保存内容
+              {t("恢复未保存内容")}
             </button>
           </div>
         )}
         {p.fatal && (
           <div className="error-banner" role="alert">
-            {p.fatal}
+            {t(p.fatal)}
           </div>
         )}
         {p.conflicts.has(p.active) && (
           <div className="conflict-banner" role="alert">
-            <strong>这篇内容在另一台设备上也有修改</strong>
+            <strong>{t("这篇内容在另一台设备上也有修改")}</strong>
             <p>
-              你在此页的修改还在。可以另存一篇，或使用另一台设备保存的内容。
+              {t(
+                "你在此页的修改还在。可以另存一篇，或使用另一台设备保存的内容。",
+              )}
             </p>
             <button className="btn ghost" onClick={() => p.onConflict(true)}>
-              保存为新记事本
+              {t("保存为新记事本")}
             </button>
             <button
               className="btn ghost"
               onClick={() => {
                 if (
-                  confirm("放弃此页未保存的修改，使用另一台设备已保存的内容？")
+                  confirm(
+                    t("放弃此页未保存的修改，使用另一台设备已保存的内容？"),
+                  )
                 )
                   p.onConflict(false);
               }}
             >
-              使用另一台设备的内容
+              {t("使用另一台设备的内容")}
             </button>
           </div>
         )}
         {current ? (
           <Suspense
-            fallback={<div className="editor-loading">正在打开内容…</div>}
+            fallback={
+              <div className="editor-loading">{t("正在打开内容…")}</div>
+            }
           >
             <Editor
               html={current.doc.html}
@@ -384,77 +409,84 @@ export default function Workspace(p: Props) {
             />
           </Suspense>
         ) : (
-          <div className="editor-loading">正在打开内容…</div>
+          <div className="editor-loading">{t("正在打开内容…")}</div>
         )}
         <div className="save-bar">
           <span
             className={
-              p.status.startsWith("保存失败")
-                ? "save-state failed"
-                : "save-state"
+              p.saveError !== null ? "save-state failed" : "save-state"
             }
             role="status"
           >
-            {p.reader ? "仅查看，可复制内容" : p.status}
+            {p.reader
+              ? t("仅查看，可复制内容")
+              : p.saveError !== null
+                ? t("保存失败：{0}。修改仍在此页，请勿关闭。", t(p.saveError))
+                : t(p.status)}
           </span>
           <span className="character-count">
-            {current?.doc.text.length || 0}字符
+            {t("{0} 字符", current?.doc.text.length || 0)}
           </span>
           <span className="connection">
-            {p.online ? "同步已连接" : "正在连接同步"}
+            {p.online ? t("同步已连接") : t("正在连接同步")}
           </span>
         </div>
       </section>
-      <aside className="board-sidebar" aria-label="分享与设置">
+      <aside className="board-sidebar" aria-label={t("分享与设置")}>
         {!p.reader && (
           <section className="card workspace-settings">
-            <h2>访问与保留</h2>
+            <h2>{t("访问与保留")}</h2>
             <button className="setting-action" onClick={p.onPassword}>
-              <Icon name="lock" /> 密码：
-              {p.space?.passwordProtected ? "已设置" : "未设置"}
+              <Icon name="lock" />{" "}
+              {t(
+                "密码：{0}",
+                t(p.space?.passwordProtected ? "已设置" : "未设置"),
+              )}
               <span aria-hidden="true">›</span>
             </button>
             <button className="setting-action" onClick={p.onRetention}>
-              <Icon name="clock" /> 保留：{retention}
+              <Icon name="clock" /> {t("保留：{0}", retention)}
               <span aria-hidden="true">›</span>
             </button>
             <button className="inline-button" onClick={p.onPrivacy}>
-              谁可以打开这些内容？
+              {t("谁可以打开这些内容？")}
             </button>
           </section>
         )}
         <section className="card">
-          <h2>在另一台设备打开</h2>
-          <p className="rail-description">扫码继续使用，或复制链接发送。</p>
+          <h2>{t("在另一台设备打开")}</h2>
+          <p className="rail-description">
+            {t("扫码继续使用，或复制链接发送。")}
+          </p>
           <div className="qr-wrap">
             {p.editLink && (
               <ShareQr
-                label="可编辑链接"
+                label={t("可编辑链接")}
                 link={p.editLink}
                 onNotice={p.onNotice}
               />
             )}
             <ShareQr
-              label="仅查看链接"
+              label={t("仅查看链接")}
               link={p.readLink}
               onNotice={p.onNotice}
             />
           </div>
         </section>
         <section className="card">
-          <h2>关于这个剪贴板</h2>
+          <h2>{t("关于这个剪贴板")}</h2>
           {[
-            ["记事本数量", `${p.pages.length}个`],
+            ["记事本数量", t("{0}个", p.pages.length)],
             ["最近修改", dateText(p.space?.updatedAt)],
             ["剩余时间", remainingText],
           ].map(([key, value]) => (
             <div className="info-row" key={key}>
-              <span>{key}</span>
+              <span>{t(key)}</span>
               <span>{value}</span>
             </div>
           ))}
           <details className="access-details">
-            <summary>查看访问记录与到期时间</summary>
+            <summary>{t("查看访问记录与到期时间")}</summary>
             {[
               ["创建时间", dateText(p.space?.createdAt)],
               ["上次查看", dateText(p.space?.lastViewedAt)],
@@ -463,11 +495,13 @@ export default function Workspace(p: Props) {
               ["保留时间", retention],
               [
                 "到期时间",
-                p.space?.expiresAt ? dateText(p.space.expiresAt) : "永久保留",
+                p.space?.expiresAt
+                  ? dateText(p.space.expiresAt)
+                  : t("永久保留"),
               ],
             ].map(([key, value]) => (
               <div className="info-row" key={key}>
-                <span>{key}</span>
+                <span>{t(key)}</span>
                 <span className={key === "本次访问IP" ? "viewer-ip" : ""}>
                   {value}
                 </span>
@@ -477,9 +511,9 @@ export default function Workspace(p: Props) {
         </section>
       </aside>
       <footer className="board-footer">
-        <a href="/">2Space</a> <span className="version">v1.0</span>{" "}
+        <a href="/">2Space</a>{" "}
         <span className="footer-slogan" data-brand-slogan>
-          {BRAND_SLOGAN}
+          {t(BRAND_SLOGAN)}
         </span>
       </footer>
     </main>

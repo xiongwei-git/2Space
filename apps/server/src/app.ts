@@ -1193,6 +1193,13 @@ export async function buildApp(options: AppOptions = {}) {
         (path?.startsWith("/") && nameValid(path.slice(1))))
     )
       return reply.type("text/html").sendFile("index.html");
+    if (
+      (req.method === "GET" || req.method === "HEAD") &&
+      !req.url.startsWith("/api/") &&
+      req.headers.accept?.includes("text/html") &&
+      existsSync(resolve(webRoot, "404.html"))
+    )
+      return reply.code(404).type("text/html").sendFile("404.html");
     return reply
       .code(404)
       .send({ error: { code: "NOT_FOUND", message: "页面不存在" } });

@@ -1,3 +1,5 @@
+import { t, currentLocale, updatePageLanguage } from "./locale.js";
+import { useLocale } from "./LanguageSelect.js";
 import { useEffect, useRef, useState } from "react";
 import type {
   PlainDocument,
@@ -98,6 +100,11 @@ function cleanDocument(doc: PlainDocument) {
   return normalizeDocument(doc);
 }
 export default function App() {
+  const locale = useLocale();
+  useEffect(() => {
+    updatePageLanguage("2Space · 这边复制，那边就有。");
+  }, [locale]);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
   const [challenge, setChallenge] = useState<{
     id: string;
@@ -135,7 +142,7 @@ export default function App() {
     [active, setActive] = useState(""),
     [busy, setBusy] = useState(false),
     [notice, setNotice] = useState(""),
-    [status, setStatus] = useState("尚未创建空间"),
+    [status, setStatusMessage] = useState("尚未创建空间"),
     [online, setOnline] = useState(false),
     [fatal, setFatal] = useState(""),
     [modal, setModal] = useState<
@@ -229,6 +236,10 @@ export default function App() {
   function publish(next: LocalPage[]) {
     pagesRef.current = next;
     setPages(next);
+  }
+  function setStatus(value: string) {
+    setSaveError(null);
+    setStatusMessage(value);
   }
   function markConflict(pageId: string) {
     conflictRef.current.add(pageId);
@@ -979,7 +990,7 @@ export default function App() {
             e.status === 429) &&
           !(e instanceof Error && e.message.includes("超出")) &&
           (retries.current.get(id) || 0) < 3;
-        setStatus(`保存失败：${message(e)}。修改仍在此页，请勿关闭。`);
+        setSaveError(message(e));
       }
     } finally {
       saving.current.delete(id);
@@ -1087,7 +1098,7 @@ export default function App() {
         }
         const copied = await addPage({
           ...local.doc,
-          title: `${local.doc.title}（我的修改）`,
+          title: t("{0}（我的修改）", local.doc.title),
         });
         if (!copied) return;
       }
@@ -1137,7 +1148,7 @@ export default function App() {
     link.download =
       (pageLabel(item, pagesRef.current.indexOf(item))
         .replace(/[\\/:*?"<>|]/g, "_")
-        .slice(0, 60) || "笔记") + ".txt";
+        .slice(0, 60) || t("笔记")) + ".txt";
     link.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -1202,7 +1213,9 @@ export default function App() {
     if (
       replace &&
       !confirm(
-        "更换后，之前的仅查看链接（包括带密码的链接）都将无法打开。是否继续？",
+        t(
+          "更换后，之前的仅查看链接（包括带密码的链接）都将无法打开。是否继续？",
+        ),
       )
     )
       return;
@@ -1286,7 +1299,7 @@ export default function App() {
       const url = new URL(openLink, location.origin);
       if (url.origin !== location.origin || parseEntry(url).kind === "home")
         throw Error("请输入本站完整的空间链接。");
-      if (dirty.current.size && !confirm("还有修改未保存，确定离开此空间？"))
+      if (dirty.current.size && !confirm(t("还有修改未保存，确定离开此空间？")))
         return;
       location.assign(url.href);
       location.reload();
@@ -1320,7 +1333,9 @@ export default function App() {
     if (!a || a.role !== "owner" || busy) return;
     if (
       !confirm(
-        "删除整个空间及全部笔记？所有链接都将失效，此设备上未保存的修改也会删除。删除后无法找回。",
+        t(
+          "删除整个空间及全部笔记？所有链接都将失效，此设备上未保存的修改也会删除。删除后无法找回。",
+        ),
       )
     )
       return;
@@ -1373,7 +1388,7 @@ export default function App() {
       space &&
       new Date(space.updatedAt).getTime() + retentionDraft * 1000 <=
         Date.now() &&
-      !confirm("按上次保存时间计算，保存后会立即删除此空间。确定继续？")
+      !confirm(t("按上次保存时间计算，保存后会立即删除此空间。确定继续？"))
     )
       return;
     setBusy(true);
@@ -1444,7 +1459,7 @@ export default function App() {
         if (
           !(await addPage({
             ...item.doc,
-            title: `${item.doc.title || "未保存的修改"}（恢复）`,
+            title: t("{0}（恢复）", item.doc.title || t("未保存的修改")),
           }))
         )
           return;
@@ -1515,7 +1530,7 @@ export default function App() {
       !spacePassword &&
       space?.passwordProtected &&
       !pendingProtection.current &&
-      !confirm("取消密码后，知道名称的人都可以查看和修改内容。确定取消？")
+      !confirm(t("取消密码后，知道名称的人都可以查看和修改内容。确定取消？"))
     )
       return;
     protectionPending.current = true;
@@ -1814,8 +1829,8 @@ export default function App() {
     try {
       if (!copyOnly && navigator.share)
         await navigator.share({
-          title: "2Space在线剪贴板",
-          text: "用2Space跨设备传文字",
+          title: t("2Space在线剪贴板"),
+          text: t("用2Space跨设备传文字"),
           url: location.origin + "/",
         });
       else {
@@ -1855,8 +1870,9 @@ export default function App() {
           reader={reader}
           isPublic={isPublic}
           busy={busy}
-          fatal={fatal}
+          fatal={t(fatal)}
           status={status}
+          saveError={saveError}
           online={online}
           conflicts={conflicts}
           editLink={editLink}
@@ -1906,13 +1922,13 @@ export default function App() {
       )}
       {!access && fatal && (
         <div className="page-error" role="alert">
-          {fatal}
+          {t(fatal)}
         </div>
       )}
       {notice && (
         <div className="toast" role="status">
-          <span>{notice}</span>
-          <button aria-label="关闭提示" onClick={() => setNotice("")}>
+          <span>{t(notice)}</span>
+          <button aria-label={t("关闭提示")} onClick={() => setNotice("")}>
             ×
           </button>
         </div>
@@ -1936,35 +1952,35 @@ export default function App() {
             aria-modal="true"
             aria-label={
               challenge
-                ? "输入空间密码"
+                ? t("输入空间密码")
                 : unlock
-                  ? "打开受保护链接"
+                  ? t("打开受保护链接")
                   : countdown !== null
-                    ? "要继续使用吗？"
+                    ? t("要继续使用吗？")
                     : modal === "deletePage"
-                      ? "删除记事本"
+                      ? t("删除记事本")
                       : modal === "password"
-                        ? "设置剪贴板密码"
+                        ? t("设置剪贴板密码")
                         : modal === "retention"
-                          ? "设置保留时间"
+                          ? t("设置保留时间")
                           : modal === "recoverDraft"
-                            ? "恢复未保存内容"
+                            ? t("恢复未保存内容")
                             : modal === "bookmark"
-                              ? "添加浏览器书签"
+                              ? t("添加浏览器书签")
                               : modal === "support"
-                                ? "支持2Space"
+                                ? t("支持2Space")
                                 : modal === "share"
-                                  ? "分享空间"
+                                  ? t("分享空间")
                                   : modal === "open"
-                                    ? "打开空间"
-                                    : "隐私说明"
+                                    ? t("打开空间")
+                                    : t("隐私说明")
             }
             onClick={(event) => event.stopPropagation()}
           >
             {!challenge && !unlock && countdown === null && (
               <button
                 className="modal-close"
-                aria-label="关闭窗口"
+                aria-label={t("关闭窗口")}
                 disabled={protectionPending.current}
                 onClick={() => {
                   if (!protectionPending.current) setModal(null);
@@ -1980,14 +1996,14 @@ export default function App() {
                   void unlockWholeSpace();
                 }}
               >
-                <h2>请输入剪贴板密码</h2>
+                <h2>{t("请输入剪贴板密码")}</h2>
                 <p>
-                  {lockMessage || "此剪贴板设置了访问密码，输入后即可继续。"}
+                  {t(lockMessage || "此剪贴板设置了访问密码，输入后即可继续。")}
                 </p>
                 <input
                   className="input"
                   type="password"
-                  aria-label="空间密码"
+                  aria-label={t("空间密码")}
                   autoComplete="current-password"
                   value={unlockPassword}
                   onChange={(event) => setUnlockPassword(event.target.value)}
@@ -1995,10 +2011,10 @@ export default function App() {
                 />
                 <div className="foot">
                   <a className="btn ghost" href="/">
-                    返回首页
+                    {t("返回首页")}
                   </a>
                   <button className="btn primary" disabled={busy}>
-                    {busy ? "正在打开…" : "打开剪贴板"}
+                    {busy ? t("正在打开…") : t("打开剪贴板")}
                   </button>
                 </div>
               </form>
@@ -2009,12 +2025,12 @@ export default function App() {
                   void unlockSpace();
                 }}
               >
-                <h2>输入密码打开链接</h2>
-                <p>请输入分享者提供的密码。</p>
+                <h2>{t("输入密码打开链接")}</h2>
+                <p>{t("请输入分享者提供的密码。")}</p>
                 <input
                   className="input"
                   type="password"
-                  aria-label="解锁密码"
+                  aria-label={t("解锁密码")}
                   autoComplete="current-password"
                   value={unlockPassword}
                   onChange={(event) => setUnlockPassword(event.target.value)}
@@ -2022,29 +2038,29 @@ export default function App() {
                 />
                 <div className="foot">
                   <button className="btn primary" disabled={busy}>
-                    打开内容
+                    {t("打开内容")}
                   </button>
                 </div>
               </form>
             ) : countdown !== null ? (
               <>
-                <h2>要继续使用吗？</h2>
-                <p>有一段时间没有操作，即将锁定内容。</p>
-                <p>{countdown}秒后锁定</p>
+                <h2>{t("要继续使用吗？")}</h2>
+                <p>{t("有一段时间没有操作，即将锁定内容。")}</p>
+                <p>{t("{0} 秒后锁定", countdown)}</p>
                 <button
                   className="btn primary"
                   onClick={() => setCountdown(null)}
                 >
-                  继续使用
+                  {t("继续使用")}
                 </button>
               </>
             ) : modal === "deletePage" ? (
               <>
-                <h2>删除记事本</h2>
-                <p>确定删除这个记事本吗？此操作无法撤销。</p>
+                <h2>{t("删除记事本")}</h2>
+                <p>{t("确定删除这个记事本吗？此操作无法撤销。")}</p>
                 <div className="foot">
                   <button className="btn ghost" onClick={() => setModal(null)}>
-                    取消
+                    {t("取消")}
                   </button>
                   <button
                     className="btn primary delete-confirm"
@@ -2053,17 +2069,19 @@ export default function App() {
                       void deletePage(pendingPageId, true);
                     }}
                   >
-                    确认删除
+                    {t("确认删除")}
                   </button>
                 </div>
               </>
             ) : modal === "recoverDraft" ? (
               <>
-                <h2>恢复未保存内容</h2>
+                <h2>{t("恢复未保存内容")}</h2>
                 {recoveryDocuments.length ? (
                   <>
                     <p>
-                      内容已在此浏览器中恢复。另存为新记事本，不会覆盖其他设备保存的内容。
+                      {t(
+                        "内容已在此浏览器中恢复。另存为新记事本，不会覆盖其他设备保存的内容。",
+                      )}
                     </p>
                     {recoveryDocuments.map((item) => (
                       <pre
@@ -2090,14 +2108,14 @@ export default function App() {
                             );
                         }}
                       >
-                        复制恢复内容
+                        {t("复制恢复内容")}
                       </button>
                       <button
                         className="btn primary"
                         disabled={busy}
                         onClick={() => void saveRecoveredDrafts()}
                       >
-                        另存为新记事本
+                        {t("另存为新记事本")}
                       </button>
                     </div>
                   </>
@@ -2109,12 +2127,14 @@ export default function App() {
                     }}
                   >
                     <p>
-                      密码变更前，有些修改未能保存。输入上次使用的密码，在这台设备上恢复；这个密码不会发到服务器。
+                      {t(
+                        "密码变更前，有些修改未能保存。输入上次使用的密码，在这台设备上恢复；这个密码不会发到服务器。",
+                      )}
                     </p>
                     <input
                       className="input"
                       type="password"
-                      aria-label="上次使用的密码"
+                      aria-label={t("上次使用的密码")}
                       autoComplete="off"
                       value={recoveryPassword}
                       onChange={(event) =>
@@ -2129,13 +2149,13 @@ export default function App() {
                         disabled={busy}
                         onClick={() => setModal(null)}
                       >
-                        稍后恢复
+                        {t("稍后恢复")}
                       </button>
                       <button
                         className="btn primary"
                         disabled={busy || !recoveryPassword}
                       >
-                        恢复内容
+                        {t("恢复内容")}
                       </button>
                     </div>
                   </form>
@@ -2148,25 +2168,31 @@ export default function App() {
                   void changePassword();
                 }}
               >
-                <h2>设置剪贴板密码</h2>
+                <h2>{t("设置剪贴板密码")}</h2>
                 <input
                   className="input"
-                  aria-label="新密码"
+                  aria-label={t("新密码")}
                   disabled={busy}
                   type="password"
                   autoComplete="new-password"
-                  placeholder="输入密码"
+                  placeholder={t("输入密码")}
                   value={spacePassword}
                   onChange={(event) => setSpacePassword(event.target.value)}
                 />
                 <p className="modal-desc">
                   {space?.passwordProtected
-                    ? "输入新密码可更换密码；留空后保存，将取消密码保护。请先让其他设备保存未完成的修改。"
-                    : "设置后，每台设备打开时都需要输入密码。请自行记住，密码无法找回。"}
+                    ? t(
+                        "输入新密码可更换密码；留空后保存，将取消密码保护。请先让其他设备保存未完成的修改。",
+                      )
+                    : t(
+                        "设置后，每台设备打开时都需要输入密码。请自行记住，密码无法找回。",
+                      )}
                 </p>
                 {isPublic && (
                   <p className="modal-desc">
-                    新密码至少8个字符，建议使用较长且不重复的密码。设置或更换密码时，内容会在浏览器中重新加密后保存。请记住新密码，忘记后无法找回内容。
+                    {t(
+                      "新密码至少8个字符，建议使用较长且不重复的密码。设置或更换密码时，内容会在浏览器中重新加密后保存。请记住新密码，忘记后无法找回内容。",
+                    )}
                   </p>
                 )}
                 <div className="foot">
@@ -2176,10 +2202,10 @@ export default function App() {
                     className="btn ghost"
                     onClick={() => setModal(null)}
                   >
-                    取消
+                    {t("取消")}
                   </button>
                   <button className="btn primary" disabled={busy}>
-                    保存
+                    {t("保存")}
                   </button>
                 </div>
               </form>
@@ -2190,13 +2216,15 @@ export default function App() {
                   void changeRetention();
                 }}
               >
-                <h2>设置保留时间</h2>
+                <h2>{t("设置保留时间")}</h2>
                 <p className="modal-desc">
-                  每次保存内容后重新计时；仅打开查看不会延长时间。到期会删除所有记事本，无法恢复。
+                  {t(
+                    "每次保存内容后重新计时；仅打开查看不会延长时间。到期会删除所有记事本，无法恢复。",
+                  )}
                 </p>
                 <select
                   className="input"
-                  aria-label="保留时间"
+                  aria-label={t("保留时间")}
                   value={retentionDraft}
                   onChange={(event) =>
                     setRetentionDraft(Number(event.target.value))
@@ -2207,26 +2235,28 @@ export default function App() {
                     0,
                   ].map((seconds) => (
                     <option key={seconds} value={seconds}>
-                      {
+                      {t(
                         RETENTION_LABELS[
                           RETENTION_SECONDS.indexOf(
                             seconds as (typeof RETENTION_SECONDS)[number],
                           )
-                        ]
-                      }
+                        ],
+                      )}
                     </option>
                   ))}
                 </select>
                 <p className="modal-desc">
-                  到期时间：
-                  {retentionDraft === 0
-                    ? "永久保留"
-                    : space
-                      ? new Date(
-                          new Date(space.updatedAt).getTime() +
-                            retentionDraft * 1000,
-                        ).toLocaleString("zh-CN")
-                      : "—"}
+                  {t(
+                    "到期时间：{0}",
+                    retentionDraft === 0
+                      ? t("永久保留")
+                      : space
+                        ? new Date(
+                            new Date(space.updatedAt).getTime() +
+                              retentionDraft * 1000,
+                          ).toLocaleString(currentLocale())
+                        : "—",
+                  )}
                 </p>
                 <div className="foot">
                   <button
@@ -2234,40 +2264,48 @@ export default function App() {
                     className="btn ghost"
                     onClick={() => setModal(null)}
                   >
-                    取消
+                    {t("取消")}
                   </button>
                   <button className="btn primary" disabled={busy}>
-                    保存
+                    {t("保存")}
                   </button>
                 </div>
               </form>
             ) : modal === "bookmark" ? (
               <>
-                <h2>{access ? "收藏这个剪贴板" : "收藏2Space首页"}</h2>
-                <p>按下面的方法，在浏览器中确认保存，下次从书签直接打开。</p>
+                <h2>{access ? t("收藏这个剪贴板") : t("收藏2Space首页")}</h2>
+                <p>
+                  {t("按下面的方法，在浏览器中确认保存，下次从书签直接打开。")}
+                </p>
                 <dl className="bookmark-steps">
                   <div>
-                    <dt>电脑</dt>
+                    <dt>{t("电脑")}</dt>
                     <dd>
-                      Mac 按 <kbd>⌘</kbd> + <kbd>D</kbd>；Windows / Linux 按{" "}
-                      <kbd>Ctrl</kbd> + <kbd>D</kbd>。
+                      {t(
+                        "Mac 按 {0}，Windows / Linux 按 {1}。",
+                        "⌘ + D",
+                        "Ctrl + D",
+                      )}
                     </dd>
                   </div>
                   <div>
                     <dt>iPhone / iPad</dt>
                     <dd>
-                      在 Safari
-                      的页面菜单或分享菜单中，选择“添加书签”或“加入个人收藏”。
+                      {t(
+                        "在 Safari\n                      的页面菜单或分享菜单中，选择“添加书签”或“加入个人收藏”。",
+                      )}
                     </dd>
                   </div>
                   <div>
                     <dt>Android</dt>
-                    <dd>打开浏览器菜单，选择“添加书签”或点亮星标。</dd>
+                    <dd>{t("打开浏览器菜单，选择“添加书签”或点亮星标。")}</dd>
                   </div>
                 </dl>
                 {access && (
                   <p className="bookmark-privacy">
-                    书签会保存当前完整链接。共用或同步浏览器账号时，请确认哪些人能看到。
+                    {t(
+                      "书签会保存当前完整链接。共用或同步浏览器账号时，请确认哪些人能看到。",
+                    )}
                   </p>
                 )}
                 <div className="foot">
@@ -2282,46 +2320,54 @@ export default function App() {
                         );
                     }}
                   >
-                    复制当前页链接
+                    {t("复制当前页链接")}
                   </button>
                   <button
                     className="btn primary"
                     onClick={() => setModal(null)}
                   >
-                    知道了
+                    {t("知道了")}
                   </button>
                 </div>
               </>
             ) : modal === "support" ? (
               <>
-                <h2>支持2Space</h2>
-                <p>如果2Space对你有用，把它分享给下一位需要的人。</p>
+                <h2>{t("支持2Space")}</h2>
+                <p>{t("如果2Space对你有用，把它分享给下一位需要的人。")}</p>
                 <div className="support-actions">
                   <button
                     className="btn primary"
                     onClick={() => void supportShare(true)}
                   >
-                    复制首页链接
+                    {t("复制首页链接")}
                   </button>
                   <button
                     className="btn ghost"
                     onClick={() => void supportShare()}
                   >
-                    分享给朋友
+                    {t("分享给朋友")}
                   </button>
                 </div>
-                <p className="modal-desc">收藏首页，下次需要时直接打开。</p>
+                <p className="modal-desc">
+                  {t("收藏首页，下次需要时直接打开。")}
+                </p>
               </>
             ) : modal === "privacy" ? (
               <>
-                <h2>隐私说明</h2>
+                <h2>{t("隐私说明")}</h2>
                 <p>
                   {isPublic
-                    ? "知道名称的人可以查看和修改此剪贴板，设置密码可限制访问。仅查看链接方便阅读，知道名称的人仍可打开可编辑页面。"
-                    : "拿到可编辑链接的人可以修改全部内容；仅查看链接只能阅读和复制。请保存好可编辑链接，丢失后无法找回。"}
+                    ? t(
+                        "知道名称的人可以查看和修改此剪贴板，设置密码可限制访问。仅查看链接方便阅读，知道名称的人仍可打开可编辑页面。",
+                      )
+                    : t(
+                        "拿到可编辑链接的人可以修改全部内容；仅查看链接只能阅读和复制。请保存好可编辑链接，丢失后无法找回。",
+                      )}
                 </p>
                 <p>
-                  请勿存放账号密码、银行卡号等敏感信息。删除或关闭分享，无法收回别人已复制的内容。重要内容请另行备份。
+                  {t(
+                    "请勿存放账号密码、银行卡号等敏感信息。删除或关闭分享，无法收回别人已复制的内容。重要内容请另行备份。",
+                  )}
                 </p>
                 {!isPublic && !reader && (
                   <button
@@ -2331,7 +2377,7 @@ export default function App() {
                       void makeShare();
                     }}
                   >
-                    仅查看分享设置
+                    {t("仅查看分享设置")}
                   </button>
                 )}
                 <div className="foot">
@@ -2339,20 +2385,22 @@ export default function App() {
                     className="btn ghost danger"
                     onClick={() => void deleteSpace()}
                   >
-                    删除整个剪贴板
+                    {t("删除整个剪贴板")}
                   </button>
                 </div>
               </>
             ) : modal === "share" ? (
               <>
-                <h2>仅查看分享</h2>
-                <p>此链接包含所有记事本，对方可以阅读和复制，不能修改。</p>
+                <h2>{t("仅查看分享")}</h2>
+                <p>
+                  {t("此链接包含所有记事本，对方可以阅读和复制，不能修改。")}
+                </p>
                 <div role="status" className="share-status">
-                  {shareMessage || "正在准备链接…"}
+                  {t(shareMessage || "正在准备链接…")}
                 </div>
                 <input
                   className="input"
-                  aria-label="仅查看分享链接"
+                  aria-label={t("仅查看分享链接")}
                   readOnly
                   value={shareLink}
                 />
@@ -2360,12 +2408,12 @@ export default function App() {
                   className="btn primary"
                   onClick={() => void copyShare(shareLink)}
                 >
-                  复制仅查看链接
+                  {t("复制仅查看链接")}
                 </button>
                 <details className="share-advanced">
-                  <summary>更多分享设置</summary>
+                  <summary>{t("更多分享设置")}</summary>
                   <label>
-                    链接密码
+                    {t("链接密码")}
                     <input
                       className="input"
                       type="password"
@@ -2378,23 +2426,25 @@ export default function App() {
                     disabled={!sharePassword || busy}
                     onClick={() => void makeShare(false, true)}
                   >
-                    生成密码链接
+                    {t("生成密码链接")}
                   </button>
                   <button
                     className="btn ghost"
                     disabled={busy}
                     onClick={() => void makeShare(true)}
                   >
-                    更新链接
+                    {t("更新链接")}
                   </button>
                   <button
                     className="btn ghost danger"
                     onClick={() => void revoke()}
                   >
-                    关闭分享
+                    {t("关闭分享")}
                   </button>
                   <p>
-                    更换或关闭分享后，旧链接不能再打开。别人已复制的内容无法收回。
+                    {t(
+                      "更换或关闭分享后，旧链接不能再打开。别人已复制的内容无法收回。",
+                    )}
                   </p>
                 </details>
               </>
@@ -2405,14 +2455,14 @@ export default function App() {
                   void openExisting();
                 }}
               >
-                <h2>打开空间</h2>
+                <h2>{t("打开空间")}</h2>
                 <input
                   className="input"
-                  aria-label="空间链接"
+                  aria-label={t("空间链接")}
                   value={openLink}
                   onChange={(event) => setOpenLink(event.target.value)}
                 />
-                <button className="btn primary">打开空间</button>
+                <button className="btn primary">{t("打开空间")}</button>
               </form>
             )}
           </section>

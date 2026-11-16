@@ -1,0 +1,35 @@
+@import "./tokens.css";
+@import "./language-select.css";
+:root {
+  color-scheme: light dark;
+}
+body {
+  margin: 0;
+  padding: 2rem 1.25rem;
+  background: Canvas;
+  color: var(--color-text-primary);
+  font-family: var(--font-family-body);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+main {
+  max-width: 30rem;
+  margin: 2rem auto;
+}
+h1 {
+  font-size: var(--font-size-title);
+  line-height: var(--line-height-heading);
+}
+p {
+  margin: 1rem 0;
+}
+a {
+  display: inline-block;
+  color: var(--color-action-emphasis);
+  padding: 0.75rem 0;
+  font-weight: var(--font-weight-strong);
+}
+a:focus-visible {
+  outline: 2px solid var(--color-action);
+  outline-offset: 4px;
+}

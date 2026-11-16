@@ -1,3 +1,4 @@
+import { t, currentLocale } from "./locale.js";
 import type { PlainDocument, PageRecord } from "@2space/shared";
 export interface LocalPage {
   record: PageRecord;
@@ -24,8 +25,8 @@ export function pageLabel(page: LocalPage, index: number): string {
   return chars.length
     ? chars.slice(0, 6).join("") + (chars.length > 6 ? "…" : "")
     : index === 0
-      ? "剪贴板"
-      : `记事本${index}`;
+      ? t("剪贴板")
+      : t("记事本{0}", index);
 }
 export function randomExperienceName(): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -38,6 +39,6 @@ export function randomExperienceName(): string {
 }
 export function dateText(value: string | null | undefined): string {
   return value
-    ? new Date(value).toLocaleString("zh-CN", { hour12: false })
+    ? new Date(value).toLocaleString(currentLocale(), { hour12: false })
     : "—";
 }
