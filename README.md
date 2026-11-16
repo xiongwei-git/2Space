@@ -52,3 +52,7 @@ npm run build
 只用 Docker 开发时，先停止上面的服务，再运行 `docker compose -f compose.dev.yaml up --build`，打开 [http://localhost:5173](http://localhost:5173)。开发环境使用独立数据卷。
 
 本地开发需要 Node.js 24。Docker 开发、架构和兼容性测试见[开发规范](docs/DEVELOPMENT.md)、[架构](docs/ARCHITECTURE.md)、[API](docs/API.md)和[浏览器密码保护](docs/decisions/006-browser-password-protection.md)。
+
+## 许可证
+
+2Space 使用 [MIT 许可证](LICENSE)。

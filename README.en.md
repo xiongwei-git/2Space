@@ -52,3 +52,7 @@ npm run build
 To develop with Docker, stop the service above, run `docker compose -f compose.dev.yaml up --build`, and open [http://localhost:5173](http://localhost:5173). Development uses a separate data volume.
 
 Local development requires Node.js 24. See the Chinese-language [development guide](docs/DEVELOPMENT.md), [architecture notes](docs/ARCHITECTURE.md), [API reference](docs/API.md), and [browser password protection design](docs/decisions/006-browser-password-protection.md).
+
+## License
+
+2Space is licensed under the [MIT License](LICENSE).
