@@ -4,7 +4,9 @@ English · [简体中文](README.md)
 
 **Copy here. Pick it up there.** 2Space is a self-hosted clipboard for text, rich text, and code. Open the same named space on another device to pick up where you left off.
 
-![2Space home screen in Simplified Chinese, with a space name field and two devices showing the same note](docs/images/home.webp)
+![2Space English home screen preview showing the same note on two devices](docs/images/home.webp)
+
+_Screenshot from the multilingual development build. The current open-source app interface is in Simplified Chinese._
 
 ## Start with one command
 
